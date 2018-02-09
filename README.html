@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Spaceman</title>
+<meta charset="UTF-8">
+<style type="text/css">
+code, code pre {
+  background-color: LightGray;
+}
+var {
+  background-color: SkyBlue;
+}
+</style>
+</head>
+<body>
+<h1>Spaceman</h1>
+William de Beaumont<br>
+$Date: 2018/01/25 21:44:11 $
+
+<h2>Introduction</h2>
+<p>Spaceman is a TRIPS module that turns language-derived descriptions of spatial locations (such as names of countries) into descriptions that explicitly specify which points on the Earth's surface are inside or outside those locations, in raster (e.g. GTiff) or vector (e.g. GeoJSON) formats. In some cases it can instead output standard codes (e.g. ISO country codes). It can make use of IMPACT data for names of countries, basins, and food production units (FPUs), and it can make use of ISO data for names of countries. Failing that, it can use <a href="https://www.openstreetmap.org/">OpenStreetMap</a>.</p>
+
+<p>In this document, computer code is displayed like <code>this</code>, and variables like <code><var>this</var></code>. Optional parts are within square brackets <code>[ ]</code>, and alternatives are separated by pipes within curly braces <code>{ | | }</code>.</p>
+
+<h2>Prerequisites</h2>
+<p>You will need to install <a href="https://www.nodejs.org/">Node.js</a> and its package manager <a href="https://www.npmjs.com/">npm</a> (which usually, but not always, is included with Node.js). You will also need to install <a href="http://www.gdal.org/">GDAL/OGR</a> and <a href="https://www.imagemagick.org/">ImageMagick</a>. If you are using MacPorts, you can install all the prerequisites with this command:</p>
+<code><pre>
+  sudo port install nodejs8 npm4 gdal ImageMagick
+</pre></code>
+<p>Note that which variants of <code>gdal</code> you install will affect what formats are available. You might wish to install it like this, for example:</p>
+<code><pre>
+  sudo port install gdal +expat +netcdf +geos
+</pre></code>
+
+<h2>Installation</h2>
+<p>After the prerequisites are installed, and TRIPS is configured to find them with <code>./configure</code>, Spaceman can be installed in the usual way:</p>
+<code><pre>
+  make
+  make install
+</pre></code>
+
+<h2>Usage</h2>
+<p>Run Spaceman like any other TRIPS module:</p>
+<code><pre>
+  <var>$TRIPS_BASE</var>/bin/Spaceman [ -connect { <var>host</var>:<var>port</var> | no } ]
+</pre></code>
+
+<p>Currently, Spaceman handles one type of KQML request:</p>
+<code><pre>
+  (request :content (get-geographic-region
+    :description <var>description</var>
+    :format { (raster "<var>format-name</var>" <var>width</var> <var>height</var>) | (vector "<var>format-name</var>") | (code "<var>standard-name</var>") }
+    ))
+</pre></code>
+
+<p>Both <code>:description</code> and <code>:format</code> are required. The <var>description</var> may be a string that names the region desired, or a more complex expression (see Complex Descriptions below). The <code>:format</code> argument specifies the desired format of the file or code to be returned, including the <var>width</var> and <var>height</var> in pixels in the case of <code>raster</code> formats.</p>
+
+<p>Supported <var>format-name</var>s include those that your installation of GDAL/OGR supports (passed to the <code>-of</code> option of <code>gdal_rasterize</code> or the <code>-f</code> option of <code>ogr2ogr</code>). These are listed on the GDAL/OGR website: <a href="http://www.gdal.org/formats_list.html">raster formats</a>; <a href="http://www.gdal.org/ogr_formats.html">vector formats</a>. Note that if the region you're looking up happens to come from OpenStreetMap, two additional vector formats are supported: <code>"SVG"</code> (which GDAL/OGR can read but not write) and <code>"WKT"</code> (Well-Known Text, apparently unknown to GDAL/OGR). That's because they come directly from OSM and don't need to be converted. But it is probably unwise to rely on this. For <code>raster</code> formats, ImageMagick extends the set of <var>format-name</var>s that can be used beyond what GDAL supports; Spaceman will first use <code>gdal_rasterize</code> to write a GTiff file, then use ImageMagick's <code>convert</code> to do the final conversion. ImageMagick's website also has a <a href="https://www.imagemagick.org/script/formats.php#supported">list of supported formats</a>. Note that the lists on these websites may include formats that your particular installations of these programs don't support; to see lists of formats that your installations support, use the following commands:</p>
+<code><pre>
+  gdal_rasterize --formats
+  ogr2ogr --formats
+  convert -list format
+</pre></code>
+
+<p>Supported code <var>standard-name</var>s include "IMPACT", "ISO 3166-1 alpha-2" (or "ISO" for short), "ISO 3166-1 alpha-3", and "ISO 3166-1 numeric".</p>
+
+<p>Normally, the reply to this request looks like this:</p>
+<code><pre>
+  (reply :content (report :content (answer :location
+    (file :name "<var>filename</var>" :format <var>format</var>))))
+</pre></code>
+<p>The <var>format</var> is just the same format that you gave in the request. The <var>filename</var> is the name of the file written in this format containing the region you described (for raster formats, the pixels within the region will be white, and other pixels will be black).</p>
+
+<p>If there is an error, the reply will instead look like this (see Failure Reasons below):</p>
+<code><pre>
+  (reply :content (report :content (failure
+    :type { failed-to-interpret | cannot-perform }
+    :reason <var>reason</var>
+    [ :possible-resolution (<var>resolutions</var>) ]
+    )))
+</pre></code>
+
+<p>If <code>:format (code "<var>standard-name</var>")</code> is used instead of a <code>vector</code> or <code>raster</code> format, the reply will look like this:</p>
+<code><pre>
+  (reply :content (report :content (answer :location
+    (code :code <var>code</var> :standard "<var>standard-name</var>"))))
+</pre></code>
+<p>Or if multiple countries are selected (because you asked for the ISO code of one of IMPACT's regions that include multiple countries, like "France Plus"):</p>
+<code><pre>
+  (reply :content (report :content (answer :location
+    (list
+      (code :code <var>code-1</var> :standard "<var>standard-name</var>")
+      (code :code <var>code-2</var> :standard "<var>standard-name</var>")
+      ...
+      ))))
+</pre></code>
+<p>...except that people didn't like that little bit of consistency, so as a post-process the <code>code</code> structures get simplfied away:</p>
+<code><pre>
+  (reply :content (report :content (answer :location <var>code</var>)))
+  (reply :content (report :content (answer :location (list <var>code-1</var> <var>code-2</var> ...))))
+</pre></code>
+
+<p>This <code>list</code> structure can also result from <code>neighbors</code> (see below), even if the requested <code>:format</code> is not a <code>code</code>. The resulting <code>file</code> structures don't get simplified away.</p>
+
+<h3>Complex Descriptions</h3>
+
+<p>The <var>description</var> expression may be of any of the following forms. However, when using <code>code</code> output formats, only the first three are allowed (no <code>osm</code> atoms, no shape atoms, and no point-set operations), and an error will occur if the result is not representable using a code of the requested type (e.g. you asked for an ISO country code and the result is not a country).</p>
+
+<h4>Lookup atoms</h4>
+<dl>
+<dt><code>"<var>region name or code</var>"</code>
+<dd>Look up the region (or basin, or FPU) by name or code in IMPACT, or failing that, look up the region by name in OSM. Equivalent to the first of these for which lookup succeeds: <code>impact</code>, <code>iso</code>, <code>osm</code>.
+<dt><code>(impact "<var>region name or code</var>")</code>
+<dd>Look up the region by name or code in IMPACT. Codes can be three-letter region (country-ish) codes, three-letter basin codes, or <code><var>basin</var>_<var>region</var></code> FPU codes. Larger regional aggregations (e.g. <code>"FSU"</code> = "Former Soviet Union") are not yet supported.
+<dt><code>(iso "<var>region name or code</var>")</code>
+<dd>Look up the region by name or code in <a href="https://en.wikipedia.org/wiki/ISO_3166">ISO 3166</a>, and then use that to look up the map of that region in IMPACT or OSM as appropriate (IMPACT merges some countries into larger groups, so we must look the individual countries up in OSM instead). Currently only countries (ISO 3166-1) are supported. <em>TODO: subdivisions (ISO 3166-2).</em> Two-letter, three-letter, or three-digit codes may be used.
+<dt><code>(osm "<var>region name</var>" [ "<var>country code</var>" ] )</code>
+<dd>Look up the region by name on OpenStreetMap. The search may be restricted to a specific country by giving its ISO code (any of them) as the second argument. That also works for the country itself, e.g. <code>(osm "Georgia" "GE")</code> is the country of Georgia, while <code>(osm "Georgia" "US")</code> is the U.S. state of Georgia.
+<dt><code>WD</code> (no quotes)
+<dd>The whole world, i.e. the union of all the countries. Excludes oceans etc., and notably Antarctica.
+</dl>
+<em>TODO: allow restriction by type, e.g. <code>(basin "Mississippi")</code> vs. <code>(state "Mississippi")</code>, and <code>(state "Georgia")</code> vs. <code>(country "Georgia")</code>?</em>
+
+<h4>Shape atoms</h4>
+<dl>
+<dt><code>(box <var>west-side-lon</var> <var>south-side-lat</var> <var>east-side-lon</var> <var>north-side-lat</var>)</code>
+<dd>Box in lat/lon (really easting/northing) coordinates. In graphics terms, the order of the arguments is <code>(box <var>min-x</var> <var>min-y</var> <var>max-x</var> <var>max-y</var>)</code>, although <var>min-y</var> and <var>max-y</var> are swapped because they are the minimum and maximum northings (see Coordinate Systems).
+<dt><code>(zone <var>south-side-lat</var> <var>north-side-lat</var>)</code>
+<dd>Band of latitudes containing all longitudes. Equivalent to <code>(box -180 <var>south-side-lat</var> 180 <var>north-side-lat</var>)</code>.
+<dt><code>(lune <var>west-side-lon</var> <var>east-side-lon</var>)</code>
+<dd>Band of longitudes containing all latitudes. Equivalent to <code>(box <var>west-side-lon</var> -90 <var>east-side-lon</var> 90)</code>.
+</dl>
+<em>TODO: other shape atoms?</em>
+
+<h4>Point-set operations</h4>
+<dl>
+<dt><code>(intersection <var>regions...</var>)</code>
+<dd>The intersection of the set of points in one or more regions (which are themselves represented as description expressions).
+<dt><code>(union <var>regions...</var>)</code>
+<dd>The union of the set of points in one or more regions.
+<dt><code>(complement <var>regions...</var>)</code>
+<dd>The complement of the set of points in one or more regions; <code>(complement <var>foo</var> <var>bar</var>)</code> is equivalent to <code>(complement (union <var>foo</var> <var>bar</var>))</code>.
+<dt><code>(difference <var>positive-region</var> <var>negative-regions...</var>)</code>
+<dd>The difference of the set of points in one or more regions; equivalent to <code>(intersection <var>positive-region</var> (complement <var>negative-regions...</var>))</code>.
+</dl>
+
+<p>Note that for the purpose of set operations on vector data, regions are always taken to be closed regular sets of points, and the results are also so regularized. So you'll never see a degenerate piece of geometry like an isolated curve or point, only areas. For example, when you have two regions <var>A</var> and <var>B</var> that share a boundary but don't otherwise overlap, <code>(union <var>A</var> <var>B</var>)</code> will count the shared boundary as part of the interior, while <code>(intersection <var>A</var> <var>B</var>)</code> will be empty (the shared boundary is counted as part of the exterior). In both cases, the shared boundary is not explicitly mentioned in the output, because it would be a degenerate piece of geometry with no area.</p>
+
+<h4>Other</h4>
+<dl>
+<dt><code>(neighbors <var>country</var>)</code>
+<dd>The countries neighboring <var>country</var>. For now this only works on countries, not other types of region (not even IMPACT regions of multiple countries like "France Plus"). So it's recommended to use it like this: <code>(neighbors (iso "<var>country name or code</var>"))</code>. If the selected country has more than one neighbor, they will be wrapped in a <code>list</code> structure; if it has no neighbors, an <code>unknown-object</code> failure will result. Point-set operations (and <code>neighbors</code> itself) do not work on <code>list</code> structures, so <code>neighbors</code> should not be used as an argument to other descriptions.
+</dl>
+
+<h3>Coordinate Systems</h3>
+
+<p>The conventional way to specify points on the Earth's surface is in degrees of latitude North or South from the Equator, and degrees of longitude East or West from the Prime Meridian, in that order.</p>
+
+<p>For vector formats, coordinates are given as signed degrees of easting and northing, in that order. That means northern latitudes and eastern longitudes are represented as positive numbers, and southern latitudes and western longitudes are represented as negative numbers. (One exception is SVG, which swaps North and South in order to display the map "right side up" without a transformation.) These conventions are also used in the explicit shape descriptions, <code>box</code>, <code>zone</code>, and <code>lune</code>.</p>
+
+<p>For raster formats, coordinates are given as X and Y, in that order, meaning the number of pixels to the right (East) and down (South) from the top left (Northwest) corner. That means they depend on the <var>width</var> and <var>height</var> in pixels. Raster files always cover the whole surface of the Earth. The center is at 0° latitude by 0° longitude, the X coordinate corresponds to longitude, and the Y coordinate corresponds to latitude.</p>
+
+<p>Note that the Y coordinate for raster formats is negated relative to vector formats (i.e. it's <em>southing</em>, not northing). Also note that the order of the two coordinates for both vector and raster formats is the reverse of the conventional (lat, lon) order: (X, Y), not (Y, X), even though lat corresponds to Y and lon corresponds to X.</p>
+
+<p>The following table summarizes how the different coordinate systems correspond at certain points (ignoring which corner of an individual pixel we're talking about):</p>
+<table>
+<tr><th colspan="2">Conventional</th><th colspan="2">Vector format</th><th colspan="2">Raster format</th></tr>
+<tr><th>(latitude,</th><th>longitude)</th><th>(easting,</th><th>northing)</th><th>(X,</th><th>Y)</th></tr>
+<tr><td>0° by </td><td>0° </td><td>0, </td><td>0</td><td><var>width</var>/2, </td><td><var>height</var>/2</td></tr>
+<tr><td>90°N by </td><td>180°W</td><td>-180, </td><td>90</td><td>0, </td><td>0</td></tr>
+<tr><td>90°S by </td><td>180°E</td><td>180, </td><td>-90</td><td><var>width</var>, </td><td><var>height</var></td></tr>
+<tr><td>90°S by </td><td>180°W</td><td>-180, </td><td>-90</td><td>0, </td><td><var>height</var></td></tr>
+<tr><td>90°N by </td><td>180°E</td><td>180, </td><td>90</td><td><var>width</var>, </td><td>0</td></tr>
+</table>
+
+<p>Nothing in this section should be taken to contradict the specifications of any specific formats. If they specify how their coordinates correspond to latitude and longitude differently from how I laid it out above, they're right and I'm wrong. I'm mostly just taking the GeoJSON format as representative of the various vector formats.</p>
+
+<h3>Failure Reasons</h3>
+
+<p>There are many ways that a request to Spaceman can fail. Failure reports generally follow the "CwC: Inter-agent Communicative Acts" document, but Spaceman extends the set of possible <code>:reason</code> arguments:</p>
+
+<dl>
+<dt><code>(program-error :message "<var>error-message</var>")</code>
+<dd>Something within Spaceman (or its external resources) failed unexpectedly.
+<dt><code>(missing-argument :operator <var>op</var> :argument <var>arg-name-or-position</var>)</code>
+<dd>The request contained a subexpression with operator (first element symbol) <var>op</var>, and Spaceman expected it to have an argument with the given name or at the given position, but it didn't.
+<dt><code>(invalid-argument :operator <var>op</var> :argument <var>arg-name-or-position</var> :expected "<var>expectation</var>" :got <var>actual-arg-val</var>)</code>
+<dd>The request contained a subexpression that had an expected argument, but its value <var>actual-arg-val</var> did not fit what Spaceman expected, described by <var>expectation</var>. Usually this is a type or list of accepted values.
+<dt><code>(invalid-argument-count :operator <var>op</var> :expected <var>expected-arg-count</var> :got <var>actual-arg-count</var>)</code>
+<dd>The request contained a subexpression that had a different number of arguments than Spaceman expected.
+<dt><code>(invalid-argument-combo :comment "<var>explanation</var>")</code>
+<dd>The request used arguments that might be OK on their own, but don't work in combination.
+<dt><code>(unknown-action :what <var>op</var>)</code>
+<dd>The request contained a subexpression using an operator <var>op</var> that Spaceman doesn't recognize.
+<dt><code>(unknown-object :what <var>description</var>)</code>
+<dd>Spaceman can't find anything matching the described object.
+<dt><code>(ambiguous :what <var>description</var>)</code>
+<dd>Spaceman found multiple things matching the described object. In this case, the <code>:possible-resolution</code> list will contain a disambiguated description of each of the things Spaceman found.
+<dt><code>(multiple :failures (<var>sub-failures...</var>))</code>
+<dd>Multiple subexpressions failed. The <var>sub-failures</var> are the <code>failure</code> structures, one for each of the failed subexpressions.
+</dl>
+
+<p>Most of these have <code>:type failed-to-interpret</code>, but <code>program-error</code>, <code>unknown-object</code>, <code>ambiguous</code>, and <code>multiple</code> have <code>:type cannot-perform</code> instead.</p>
+
+</body>
+</html>
