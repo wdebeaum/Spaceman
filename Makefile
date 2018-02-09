@@ -9,6 +9,10 @@ include $(CONFIGDIR)/javascript/prog.mk
 
 INSTALL_DIR=$(etcdir)/$(MODULE)
 
+# this rule added for standalone git version
+install::
+	cd trips/src/KQML && make install
+
 install:: $(INSTALL_DIR)/cty/map.shp $(INSTALL_DIR)/fpu/map.shp downloads/countries.json
 	$(MKINSTALLDIRS) $(INSTALL_DIR)/cache/impact
 	$(MKINSTALLDIRS) $(INSTALL_DIR)/cache/osm
