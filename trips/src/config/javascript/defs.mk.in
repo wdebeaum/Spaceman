@@ -1,0 +1,13 @@
+# -*- mode: Makefile;-*-
+#
+# defs.mk for javascript
+#
+# William de Beaumont, wbeaumont@ihmc.us, 2015-04-03
+# $Id: defs.mk.in,v 1.1 2015/04/03 15:46:07 wdebeaum Exp $
+#
+# @configure_input@
+#
+
+NODE = @NODE@
+NPM = @NPM@
+

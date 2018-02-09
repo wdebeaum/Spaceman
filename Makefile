@@ -4,7 +4,7 @@ MODULE=Spaceman
 MAIN=$(MODULE).js
 SRCS=$(MAIN) set-ops.js
 
-CONFIGDIR=../config
+CONFIGDIR=trips/src/config
 include $(CONFIGDIR)/javascript/prog.mk
 
 INSTALL_DIR=$(etcdir)/$(MODULE)
