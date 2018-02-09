@@ -6,9 +6,9 @@ The main documentation is in [README.html](README.html), please read the list of
 
 ## Build instructions ##
 
-    ./configure
+    ./configure [--with-node=/path/to/node] [--with-npm=/path/to/npm]
     make
-    make install # installs to trips/etc/
+    make install # installs to trips/etc/ and trips/bin/
 
 ## Licensing ##
 
