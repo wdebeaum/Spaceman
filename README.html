@@ -15,7 +15,7 @@ var {
 <body>
 <h1>Spaceman</h1>
 William de Beaumont<br>
-$Date: 2018/01/25 21:44:11 $
+$Date: 2018/02/19 22:10:04 $
 
 <h2>Introduction</h2>
 <p>Spaceman is a TRIPS module that turns language-derived descriptions of spatial locations (such as names of countries) into descriptions that explicitly specify which points on the Earth's surface are inside or outside those locations, in raster (e.g. GTiff) or vector (e.g. GeoJSON) formats. In some cases it can instead output standard codes (e.g. ISO country codes). It can make use of IMPACT data for names of countries, basins, and food production units (FPUs), and it can make use of ISO data for names of countries. Failing that, it can use <a href="https://www.openstreetmap.org/">OpenStreetMap</a>.</p>
@@ -23,9 +23,9 @@ $Date: 2018/01/25 21:44:11 $
 <p>In this document, computer code is displayed like <code>this</code>, and variables like <code><var>this</var></code>. Optional parts are within square brackets <code>[ ]</code>, and alternatives are separated by pipes within curly braces <code>{ | | }</code>.</p>
 
 <h2>Prerequisites</h2>
-<p>You will need to install <a href="https://www.nodejs.org/">Node.js</a> and its package manager <a href="https://www.npmjs.com/">npm</a> (which usually, but not always, is included with Node.js). You will also need to install <a href="http://www.gdal.org/">GDAL/OGR</a> and <a href="https://www.imagemagick.org/">ImageMagick</a>. If you are using MacPorts, you can install all the prerequisites with this command:</p>
+<p>You will need to install <a href="https://www.nodejs.org/">Node.js</a> and its package manager <a href="https://www.npmjs.com/">npm</a> (which usually, but not always, is included with Node.js). You will also need to install <a href="http://www.gdal.org/">GDAL/OGR</a> and <a href="https://www.imagemagick.org/">ImageMagick</a>. If you are using <a href="https://www.macports.org/">MacPorts</a>, you can install all the prerequisites with this command:</p>
 <code><pre>
-  sudo port install nodejs8 npm4 gdal ImageMagick
+  sudo port install nodejs8 npm5 gdal ImageMagick
 </pre></code>
 <p>Note that which variants of <code>gdal</code> you install will affect what formats are available. You might wish to install it like this, for example:</p>
 <code><pre>
@@ -53,7 +53,7 @@ $Date: 2018/01/25 21:44:11 $
     ))
 </pre></code>
 
-<p>Both <code>:description</code> and <code>:format</code> are required. The <var>description</var> may be a string that names the region desired, or a more complex expression (see Complex Descriptions below). The <code>:format</code> argument specifies the desired format of the file or code to be returned, including the <var>width</var> and <var>height</var> in pixels in the case of <code>raster</code> formats.</p>
+<p>Both <code>:description</code> and <code>:format</code> are required. The <var>description</var> may be a string that names the region desired, or a more complex expression (see Complex Descriptions below). The <code>:format</code> argument specifies the desired format of the file or code to be returned, including the <var>width</var> and <var>height</var> in pixels in the case of <code>raster</code> formats. The <code>raster</code> and <code>vector</code> formats use equirectangular projection, see Coordinate Systems below for more details.</p>
 
 <p>Supported <var>format-name</var>s include those that your installation of GDAL/OGR supports (passed to the <code>-of</code> option of <code>gdal_rasterize</code> or the <code>-f</code> option of <code>ogr2ogr</code>). These are listed on the GDAL/OGR website: <a href="http://www.gdal.org/formats_list.html">raster formats</a>; <a href="http://www.gdal.org/ogr_formats.html">vector formats</a>. Note that if the region you're looking up happens to come from OpenStreetMap, two additional vector formats are supported: <code>"SVG"</code> (which GDAL/OGR can read but not write) and <code>"WKT"</code> (Well-Known Text, apparently unknown to GDAL/OGR). That's because they come directly from OSM and don't need to be converted. But it is probably unwise to rely on this. For <code>raster</code> formats, ImageMagick extends the set of <var>format-name</var>s that can be used beyond what GDAL supports; Spaceman will first use <code>gdal_rasterize</code> to write a GTiff file, then use ImageMagick's <code>convert</code> to do the final conversion. ImageMagick's website also has a <a href="https://www.imagemagick.org/script/formats.php#supported">list of supported formats</a>. Note that the lists on these websites may include formats that your particular installations of these programs don't support; to see lists of formats that your installations support, use the following commands:</p>
 <code><pre>
@@ -152,9 +152,123 @@ $Date: 2018/01/25 21:44:11 $
 <dd>The countries neighboring <var>country</var>. For now this only works on countries, not other types of region (not even IMPACT regions of multiple countries like "France Plus"). So it's recommended to use it like this: <code>(neighbors (iso "<var>country name or code</var>"))</code>. If the selected country has more than one neighbor, they will be wrapped in a <code>list</code> structure; if it has no neighbors, an <code>unknown-object</code> failure will result. Point-set operations (and <code>neighbors</code> itself) do not work on <code>list</code> structures, so <code>neighbors</code> should not be used as an argument to other descriptions.
 </dl>
 
+<h3>Examples</h3>
+
+<p>Here are some more concrete examples of the kinds of requests you can give to Spaceman, and the replies you should get back. Stuff between <code>;</code> and the end of a line is a comment, as in Lisp. My <code><var>$TRIPS_BASE</var></code> is <code>/Users/wbeaumont/cwms</code>, so my output files end up in <code>/Users/wbeaumont/cwms/etc/Spaceman/cache/</code>.</p>
+<code><pre>
+  ;; tell Spaceman to get "United States" as a GTiff file, 180x90 pixels
+  (request :content (get-geographic-region
+    :description "United States"
+    :format (raster "GTiff" 180 90)
+    ))
+  ;; Spaceman gets the "USA" region from IMPACT and converts it
+  (reply :receiver nil :content (report :content (answer :location
+    (file
+      :name "/Users/wbeaumont/cwms/etc/Spaceman/cache/impact/Region-USA-180x90.gtiff"
+      :format (raster "GTiff" 180 90)
+      ))))
+
+  ;; tell Spaceman to get "France" as an SVG file
+  (request :content (get-geographic-region
+    :description "France"
+    :format (vector "SVG")
+    ))
+  ;; Spaceman looks up the ISO code for "France" ("FR"), and then looks that up
+  ;; on OSM and gets its borders as an SVG path
+  (reply :receiver nil :content (report :content (answer :location
+    (file
+      :name "/Users/wbeaumont/cwms/etc/Spaceman/cache/osm/France--fr.svg"
+      :format (vector "SVG")
+      ))))
+
+  ;; tell Spaceman to get the ISO code for "Mexico"
+  (request :content (get-geographic-region
+    :description "Mexico"
+    :format (code "ISO")
+    ))
+  ;; the code is "MX"
+  (reply :receiver nil :content (report :content (answer :location MX)))
+
+  ;; tell Spaceman to find the ISO code for "Shangri-La"
+  (request :content (get-geographic-region
+    :description "Shangri-La"
+    :format (code "ISO")
+    ))
+  ;; it's fictional, so there's no ISO code for it to find
+  (reply :receiver nil :content (report :content
+    (failure
+      :type cannot-perform
+      :reason (unknown-object :what (iso "shangri-la"))
+      )))
+
+  ;; tell Spaceman to get a PNG of "United States" from OSM instead of
+  ;; IMPACT (IMPACT's version lacks the overseas territories and such)
+  (request :content (get-geographic-region
+    :description (osm "United States")
+    :format (raster "PNG" 720 360)
+    ))
+  (reply :receiver nil :content (report :content (answer :location
+    (file
+      :name "/Users/wbeaumont/cwms/etc/Spaceman/cache/osm/united_states-720x360.png"
+      :format (raster "PNG" 720 360)
+      ))))
+
+  ;; tell Spaceman to get the IMPACT code for "France Plus"
+  (request :content (get-geographic-region
+    :description "France Plus"
+    :format (code "IMPACT")
+    ))
+  ;; it's "FRP"
+  (reply :receiver nil :content (report :content (answer :location FRP)))
+
+  ;; tell Spaceman to get the ISO code for IMPACT's "France Plus"
+  (request :content (get-geographic-region
+    :description (impact "France Plus") ; or just :description "France Plus"
+    :format (code "ISO")
+    ))
+  ;; since it's really multiple countries, we get a list of codes back
+  ;; FIXME!!! this is what we actually get, but there should be some codes
+  ;; after "list":
+  (reply :receiver nil :content (report :content (answer :location (list))))
+
+  ;; tell Spaceman to get the ISO codes for the US's neighbors
+  (request :content (get-geographic-region
+    :description (neighbors (iso "United States"))
+    :format (code "ISO")
+    ))
+  ;; the US's neighbors are Canada (CA) and Mexico (MX)
+  (reply :receiver nil :content (report :content (answer :location (list CA MX))))
+
+  ;; tell Spaceman to get a PNG of the part of Russia above the Arctic circle
+  ;; (approximately)
+  (request :content (get-geographic-region
+    :description (intersection "Russia" (zone 66 90))
+    :format (raster "PNG" 180 90)
+    ))
+  ;; FIXME!!! this is what we actually get:
+  (reply :receiver nil :content (report :content
+    (failure
+      :type failed-to-interpret
+      :reason (invalid-argument :operator box :argument -1 :expected "number" :got nil)
+      )))
+
+  ;; tell Spaceman to get a PNG of the countries in the Nordic Council
+  (request :content (get-geographic-region
+    :description (union "Denmark" "Finland" "Iceland" "Norway" "Sweden")
+    :format (raster "PNG" 720 360)
+    ))
+  ;; FIXME!!! this seems to only include Norway?!
+  ;; FIXME 2: ought to sort the union arguments to improve caching
+  (reply :receiver nil :content (report :content (answer :location
+    (file
+      :name "/Users/wbeaumont/cwms/etc/Spaceman/cache/computed/[union--impact-Region-ISL--impact-Region-NOR--osm-Finland--fi--impact-Region-SWE--impact-Region-DNK]-720x360.png"
+      :format (raster "PNG" 720 360)))))
+
+</pre></code>
+
 <h3>Coordinate Systems</h3>
 
-<p>The conventional way to specify points on the Earth's surface is in degrees of latitude North or South from the Equator, and degrees of longitude East or West from the Prime Meridian, in that order.</p>
+<p>The conventional way to specify points on the Earth's surface is in degrees of latitude North or South from the Equator, and degrees of longitude East or West from the Prime Meridian, in that order. Spaceman's raster and vector format outputs use <a href="https://en.wikipedia.org/wiki/Equirectangular_projection">equirectangular projections</a> to map points on the Earth's surface to points in the output image.</p>
 
 <p>For vector formats, coordinates are given as signed degrees of easting and northing, in that order. That means northern latitudes and eastern longitudes are represented as positive numbers, and southern latitudes and western longitudes are represented as negative numbers. (One exception is SVG, which swaps North and South in order to display the map "right side up" without a transformation.) These conventions are also used in the explicit shape descriptions, <code>box</code>, <code>zone</code>, and <code>lune</code>.</p>
 
