@@ -15,7 +15,7 @@ var {
 <body>
 <h1>Spaceman</h1>
 William de Beaumont<br>
-$Date: 2018/02/19 22:10:04 $
+$Date: 2018/02/20 16:45:08 $
 
 <h2>Introduction</h2>
 <p>Spaceman is a TRIPS module that turns language-derived descriptions of spatial locations (such as names of countries) into descriptions that explicitly specify which points on the Earth's surface are inside or outside those locations, in raster (e.g. GTiff) or vector (e.g. GeoJSON) formats. In some cases it can instead output standard codes (e.g. ISO country codes). It can make use of IMPACT data for names of countries, basins, and food production units (FPUs), and it can make use of ISO data for names of countries. Failing that, it can use <a href="https://www.openstreetmap.org/">OpenStreetMap</a>.</p>
@@ -31,6 +31,8 @@ $Date: 2018/02/19 22:10:04 $
 <code><pre>
   sudo port install gdal +expat +netcdf +geos
 </pre></code>
+
+<p>Also note that MacPorts may also install some dependencies of these packages (such as <code>bash-completion</code> and <code>python27</code>), and that it tends to be verbose with its notes and warnings. Don't worry about them, you shouldn't need to do any extra setup yourself in order for Spaceman to work.</p>
 
 <h2>Installation</h2>
 <p>After the prerequisites are installed, and TRIPS is configured to find them with <code>./configure</code>, Spaceman can be installed in the usual way:</p>
