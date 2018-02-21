@@ -51,9 +51,6 @@ const impactMergers = [
     isoCodes: ['BRN', 'SGP'] },
   { impactCode: 'RAP', impactName: 'Rest of Arab Peninsula',
     isoCodes: ['ARE', 'BHR', 'KWT', 'OMN', 'QAT'] },
-/* newer versions of IMPACT data don't have this anymore?
-  { impactCode: 'SDN', impactName: 'Sudan Plus',
-    isoCodes: ['SDN', 'SSD'] },*/
   { impactCode: 'SPP', impactName: 'Spain Plus',
     isoCodes: ['AND', 'ESP', 'GIB'] },
   { impactCode: 'UKP', impactName: 'Great Britain Plus',
@@ -315,12 +312,10 @@ util.inherits(Spaceman, TripsModule);
     try {
       var content = KQML.keywordify(msg.content);
       if (!('format' in content)) {
-  //      throw new Error("must specify :format in get-geographic-region request");
 	throw missingArgument('get-geographic-region', ':format');
       }
       var format = content.format;
       if (!('description' in content)) {
-  //      throw new Error("must specify :description in get-geographic-region request");
 	throw missingArgument('get-geographic-region', ':description');
       }
       var description = content.description;
@@ -366,22 +361,18 @@ util.inherits(Spaceman, TripsModule);
 	var verb = description[0].toLowerCase();
 	if (verb == 'impact') {
 	  if (description.length != 2) {
-//	    throw new TypeError("expected 1 argument to impact, but got " + (description.length - 1));
 	    throw invalidArgumentCount(description, 1);
 	  }
 	  if (!KQML.isKQMLString(description[1])) {
-//	    throw new TypeError("expected string in first argument to impact, but got " + KQML.toKQML(description[1]));
 	    throw invalidArgument(description, 1, "string");
 	  }
 	  var searchStr = KQML.kqmlStringAsJS(description[1]).toLowerCase();
 	  this.evaluateImpact(format, formatStyle, formatName, searchStr, callback);
 	} else if (verb == 'iso') {
 	  if (description.length != 2) {
-//	    throw new TypeError("expected 1 argument to iso, but got " + (description.length - 1));
             throw invalidArgumentCount(description, 1);
 	  }
 	  if (!KQML.isKQMLString(description[1])) {
-//	    throw new TypeError("expected string in first argument to iso, but got " + KQML.toKQML(description[1]));
 	    throw invalidArgument(description, 1, "string");
 	  }
 	  var searchStr = KQML.kqmlStringAsJS(description[1]).toLowerCase();
@@ -429,27 +420,22 @@ util.inherits(Spaceman, TripsModule);
  	    }
  	  });
 	} else if (formatStyle == 'code') {
-//	  throw new TypeError("only raw search strings, iso, or impact may be used as descriptions with code output format");
 	  throw invalidArgumentCombo("only raw search strings, WD, iso, or impact may be used as descriptions with code output format");
 	} else if (verb == 'osm') {
 	  if (description.length < 2 || description.length > 3) {
-//	    throw new TypeError("expected 1 or 2 arguments to osm, but got " + (description.length - 1));
 	    throw invalidArgumentCount(description, '1 or 2');
 	  }
 	  if (!KQML.isKQMLString(description[1])) {
-//	    throw new TypeError("expected string in first argument to osm, but got " + KQML.toKQML(description[1]));
 	    throw invalidArgument(description, 1, "string");
 	  }
 	  var searchStr = KQML.kqmlStringAsJS(description[1]).toLowerCase();
 	  var countryCode = undefined;
 	  if (description.length >= 3) {
 	    if (!KQML.isKQMLString(description[2])) {
-//	      throw new TypeError("expected string in second argument to osm, but got " + KQML.toKQML(description[2]));
 	      throw invalidArgument(description, 2, "string");
 	    }
 	    countryCode = KQML.kqmlStringAsJS(description[2]).toLowerCase();
 	    if (!(countryCode in this.isoCodeToCountry)) {
-//	      throw new Error("ISO country code not found: " + countryCode);
 	      throw unknownObject(['iso', description[2]]);
 	    }
 	    // standardize on 2-letter code
@@ -458,13 +444,11 @@ util.inherits(Spaceman, TripsModule);
 	  this.evaluateOsm(format, formatStyle, formatName, searchStr, countryCode, callback);
 	} else if (verb == 'box') {
 	  if (description.length != 5) {
-//	    throw new TypeError("expected 4 arguments to box, but got " + (description.length - 1));
 	    throw invalidArgumentCount(description, 4);
 	  }
 	  var args = description.slice(1);
 	  var nonNumIndex = args.findIndex(n => (typeof(n) != 'number'));
-	  if (nonNumIndex == -1) {
-//	    throw new TypeError("expected all 4 arguments to box to be numbers, but got " + KQML.toKQML(args));
+	  if (nonNumIndex != -1) {
 	    throw invalidArgument(description, nonNumIndex, 'number');
 	  }
 	  var outputBase = `${cacheDirParent}computed/[box--${args.join('--')}]`;
@@ -490,13 +474,11 @@ util.inherits(Spaceman, TripsModule);
 	  }
 	} else if (verb == 'zone') {
 	  if (description.length != 3) {
-//	    throw new TypeError("expected 2 arguments to zone, but got " + (description.length - 1));
 	    throw invalidArgumentCount(description, 2);
 	  }
 	  this.evaluateDescription(format, ['box', -180, description[1], 180, description[2]], callback);
 	} else if (verb == 'lune') {
 	  if (description.length != 3) {
-//	    throw new TypeError("expected 2 arguments to lune, but got " + (description.length - 1));
 	    throw invalidArgumentCount(description, 2);
 	  }
 	  this.evaluateDescription(format, ['box', description[1], -90, description[2], 90], callback);
@@ -524,11 +506,9 @@ util.inherits(Spaceman, TripsModule);
 	} else if (verb == 'difference') {
 	  this.evaluateDescription(format, ['intersection', description[1], ['complement'].concat(description.slice(2))], callback);
 	} else {
-//	  throw new TypeError("invalid geographic region verb: " + verb);
 	  throw unknownAction(verb);
 	}
       } else {
-//	throw new TypeError("invalid geographic region description: " + KQML.toKQML(description));
 	throw unknownAction(description[0]);
       }
     } catch (err) {
@@ -544,8 +524,7 @@ util.inherits(Spaceman, TripsModule);
   function countryToCodeKQML(country, formatName) {
     if (formatName == 'impact') {
       // check that this code represents *only* this country
-      if (country.threeLetter != country.impactCode || country.threeLetter == 'SDN') {
-//	throw new Error("no IMPACT code correctly represents this country alone");
+      if (country.threeLetter != country.impactCode) {
 	throw invalidArgumentCombo("no IMPACT code correctly represents this country alone");
       }
       return codeKQML(country.impactCode, 'IMPACT');
@@ -560,7 +539,6 @@ util.inherits(Spaceman, TripsModule);
 
   function evaluateImpact(format, formatStyle, formatName, searchStr, callback) {
     if (!(searchStr in this.impactNames)) {
-//      throw new Error("Name or code not found in IMPACT: " + searchStr);
       throw unknownObject(['impact', `"${KQML.escapeForQuotes(searchStr)}"`]);
     }
     var metadata = this.impactNames[searchStr];
@@ -570,16 +548,8 @@ util.inherits(Spaceman, TripsModule);
       } else if (this.isValidIsoCodeFormatName(formatName)) {
 	var countries = this.impactCodeToCountries[metadata.code.toLowerCase()];
 	if (!countries) {
-//	  throw new Error("IMPACT code does not represent a country or set of countries: " + metadata.code);
 	  throw invalidArgumentCombo("IMPACT code does not represent a country or set of countries: " + metadata.code);
 	}
-	// Make sure the metadata.name is actually in all the names lists of
-	// the countries we're returning. Really this is a special case for
-	// "Sudan", whose impact code, "SDN", is the same as one of the merger
-	// codes, for "Sudan Plus", so we accidentally get that too when we
-	// look up "Sudan" and use its code "SDN" to look up country objects.
-	countries =
-	  countries.filter((country) => country.names.includes(metadata.name));
 	var codes = countries.map((country) =>
 			this.countryToCodeKQML(country, formatName));
 	if (codes.length == 1) {
@@ -588,7 +558,6 @@ util.inherits(Spaceman, TripsModule);
 	  callback(['list', ...codes]);
 	}
       } else {
-//	throw new TypeError("unknown code standard: " + formatName);
 	throw invalidArgument(format, 1, "one of 'IMPACT', 'ISO 3166-1 alpha-2', 'ISO 3166-1 alpha-3', 'ISO 3166-1 numeric'");
       }
     } else {
@@ -603,7 +572,6 @@ util.inherits(Spaceman, TripsModule);
 	this.convertVectorFormats(format, inputFile, outputBase, extraArgs, callback);
 	// TODO? use cty instead of fpu if it's a region; if it's a basin still need to merge somehow... maybe ogr2ogr will do it for us?
       } else {
-//	throw new TypeError("invalid format");
 	throw unknownAction(formatStyle);
       }
     }
@@ -649,25 +617,22 @@ util.inherits(Spaceman, TripsModule);
       if (this.nameToCountries[searchStr].length == 1) {
 	country = this.nameToCountries[searchStr][0];
       } else {
-//	throw new Error("Ambiguous ISO country name: " + searchStr + " could be one of " + this.nameToCountries[searchStr].map((country) => country.names[0]).join("; "));
 	throw ambiguous(['iso', `"${KQML.escapeForQuotes(searchStr)}"`],
 	                this.nameToCountries[searchStr].map(
 			  (country) =>
 			    ['iso', `"${country.twoLetter.toUpperCase()}"`]));
       }
     } else {
-//      throw new Error("ISO country code or name not found: " + searchStr);
       throw unknownObject(['iso', `"${KQML.escapeForQuotes(searchStr)}"`]);
     }
     // now country is set
     if (formatStyle == 'code') {
       if (!this.isValidIsoCodeFormatName(formatName)) {
-//	throw new TypeError("unknown code standard: " + formatName);
 	throw invalidArgument(format, 1, "one of 'ISO 3166-1 alpha-2', 'ISO 3166-1 alpha-3', 'ISO 3166-1 numeric'");
       }
       callback(this.countryToCodeKQML(country, formatName));
     } else {
-      if (country.threeLetter != country.impactCode || country.threeLetter == 'SDN') {
+      if (country.threeLetter != country.impactCode) {
 	// impact doesn't have this specific country, only a merged "region", so look up the actual country in OSM
 	this.evaluateOsm(format, formatStyle, formatName, country.names[0], country.twoLetter, callback);
       } else { // impact does have this country (in theory)
@@ -699,7 +664,6 @@ util.inherits(Spaceman, TripsModule);
 	    } else if (formatStyle == 'vector') {
 	      this.convertVectorFormats(format, filename, base, [], callback);
 	    } else {
-//	      throw new TypeError("invalid format");
 	      throw unknownAction(formatStyle);
 	    }
 	  } catch (err) {
@@ -802,6 +766,10 @@ util.inherits(Spaceman, TripsModule);
     var height = format[3];
     this.evaluateArguments(format, kqmlOperator, argDescs,
       inputFiles => {
+	// sort inputFiles so that we always generate the same outputFile name
+	// regardless of the order of the arguments, so that caching works
+	// better
+	inputFiles.sort();
 	// construct output file name from operator, input file names and format
 	var inputNames = inputFiles.map(f=>
 	  f.
@@ -811,15 +779,22 @@ util.inherits(Spaceman, TripsModule);
 	  replace(/\//, '-')
 	).join('--');
 	var outputFile = `${cacheDirParent}computed/[${kqmlOperator}--${inputNames}]-${width}x${height}.${formatName}`;
+	// must put -composite after every input file except the first, forming
+	// a chain of two-argument composite operations (could also make a
+	// balanced binary tree, but that's more complicated)
+	var inputArgs = [inputFiles[0]];
+	for (var i = 1; i < inputFiles.length; i++) {
+	  inputArgs.push(inputFiles[i], '-composite');
+	}
 	makeOrGetFile(outputFile, format, callback,
-	  'composite',
+	  'convert',
 	  '-compose', magickOperator,
 	  // GTiff from gdal_rasterize is 64-bit greyscale, and composite
 	  // doesn't like that for some reason (yields a blank image), so
 	  // convert to 8-bit here
 	  '-depth', '8',
 	  ...extraMagickArgs,
-	  ...inputFiles,
+	  ...inputArgs,
 	  outputFile
 	);
       },
@@ -872,6 +847,10 @@ util.inherits(Spaceman, TripsModule);
     this.evaluateArguments(
       ['vector', '"GeoJSON"'], operator, argDescs,
       inputFiles => {
+	// sort inputFiles so that we always generate the same outputFile name
+	// regardless of the order of the arguments, so that caching works
+	// better
+	inputFiles.sort();
 	// construct output file name from operator, input file names and format
 	var inputNames = inputFiles.map(f=>
 	  f.
@@ -882,18 +861,22 @@ util.inherits(Spaceman, TripsModule);
 	).join('--');
 	var outputBase = `${cacheDirParent}computed/[${operator}--${inputNames}]`;
 	var outputFile = `${outputBase}.${formatName}`;
-	// read GeoJSONs of arguments and convert each to a MultiPolygon
-	var inputMPs = inputFiles.map(f => this.readGeoJsonMultiPolygon(f));
-	var outputGeom = SetOps[operator](inputMPs);
-	// write mp to a file
 	var outputFileGJ = `${outputBase}.GeoJSON`;
-	fs.writeFileSync(outputFileGJ, JSON.stringify(outputGeom)); // TODO de-Sync-ify?
-	// convert to format if not (vector "GeoJSON")
-	if (formatName != 'geojson') {
-	  this.convertVectorFormats(format, outputFileGJ, outputBase, [], callback);
-	} else {
-	  callback(fileKQML(outputFileGJ, format));
-	}
+	fs.access(outputFileGJ, fs.constants.F_OK, (err)=>{
+	  if (err) { // outputFile does not exist yet, make it
+	    // read GeoJSONs of arguments and convert each to a MultiPolygon
+	    var inputMPs = inputFiles.map(f => this.readGeoJsonMultiPolygon(f));
+	    var outputGeom = SetOps[operator](inputMPs);
+	    // write mp to a file
+	    fs.writeFileSync(outputFileGJ, JSON.stringify(outputGeom)); // TODO de-Sync-ify?
+	  }
+	  // convert to format if not (vector "GeoJSON")
+	  if (formatName != 'geojson') {
+	    this.convertVectorFormats(format, outputFileGJ, outputBase, [], callback);
+	  } else {
+	    callback(fileKQML(outputFileGJ, format));
+	  }
+	});
       },
       callback
     );
@@ -978,7 +961,6 @@ util.inherits(Spaceman, TripsModule);
 		  fs.writeFileSync(filename, polygons); // TODO de-Sync-ify
 		  callback(fileKQML(filename, format));
 		} else {
-//		  throw new Error("not found");
 		  throw unknownObject(['osm', `"${KQML.escapeForQuotes(searchStr)}"`]);
 		}
 	      } catch (err) {
@@ -987,7 +969,6 @@ util.inherits(Spaceman, TripsModule);
 	    });
 	  } else {
 	    res.abort();
-//	    throw new Error('nominatim returned status code ' + res.statusCode);
 	    throw programError('nominatim returned status code ' + res.statusCode);
 	  }
 	} catch (err) {
@@ -1114,7 +1095,7 @@ util.inherits(Spaceman, TripsModule);
 	}
 	this.nameToCountries[lcName].push(country);
       });
-      if (country.impactCode != country.threeLetter || country.threeLetter == 'SDN') {
+      if (country.impactCode != country.threeLetter) {
 	country.impactMergedName = country.names.pop();
       }
     });

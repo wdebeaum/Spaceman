@@ -725,7 +725,7 @@ function evaluateRingBoolean(ringBoolean) {
 	  pointInts.findIndex(i =>
 	    (i.ring == out.ring && i.edge == inwardEdge));
       }
-      if (newRing !== undefined) {
+      if (newRing !== undefined && newRing.length >= 3) {
 	// finish ring by adding the first point to the end
 	newRing.push(newRing[0]);
 	newRings.push(newRing);

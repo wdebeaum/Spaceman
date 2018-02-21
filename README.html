@@ -15,7 +15,7 @@ var {
 <body>
 <h1>Spaceman</h1>
 William de Beaumont<br>
-$Date: 2018/02/20 16:45:08 $
+$Date: 2018/02/21 19:07:52 $
 
 <h2>Introduction</h2>
 <p>Spaceman is a TRIPS module that turns language-derived descriptions of spatial locations (such as names of countries) into descriptions that explicitly specify which points on the Earth's surface are inside or outside those locations, in raster (e.g. GTiff) or vector (e.g. GeoJSON) formats. In some cases it can instead output standard codes (e.g. ISO country codes). It can make use of IMPACT data for names of countries, basins, and food production units (FPUs), and it can make use of ISO data for names of countries. Failing that, it can use <a href="https://www.openstreetmap.org/">OpenStreetMap</a>.</p>
@@ -229,9 +229,7 @@ $Date: 2018/02/20 16:45:08 $
     :format (code "ISO")
     ))
   ;; since it's really multiple countries, we get a list of codes back
-  ;; FIXME!!! this is what we actually get, but there should be some codes
-  ;; after "list":
-  (reply :receiver nil :content (report :content (answer :location (list))))
+  (reply :receiver nil :content (report :content (answer :location (list FR MC))))
 
   ;; tell Spaceman to get the ISO codes for the US's neighbors
   (request :content (get-geographic-region
@@ -247,20 +245,17 @@ $Date: 2018/02/20 16:45:08 $
     :description (intersection "Russia" (zone 66 90))
     :format (raster "PNG" 180 90)
     ))
-  ;; FIXME!!! this is what we actually get:
-  (reply :receiver nil :content (report :content
-    (failure
-      :type failed-to-interpret
-      :reason (invalid-argument :operator box :argument -1 :expected "number" :got nil)
-      )))
+  (reply :receiver nil :content (report :content (answer :location
+    (file
+      :name "/Users/wbeaumont/cwms/etc/Spaceman/cache/computed/[intersection--impact-Region-RUS--[box---180--66--180--90]]-180x90.png"
+      :format (raster "PNG" 180 90)
+      ))))
 
   ;; tell Spaceman to get a PNG of the countries in the Nordic Council
   (request :content (get-geographic-region
     :description (union "Denmark" "Finland" "Iceland" "Norway" "Sweden")
     :format (raster "PNG" 720 360)
     ))
-  ;; FIXME!!! this seems to only include Norway?!
-  ;; FIXME 2: ought to sort the union arguments to improve caching
   (reply :receiver nil :content (report :content (answer :location
     (file
       :name "/Users/wbeaumont/cwms/etc/Spaceman/cache/computed/[union--impact-Region-ISL--impact-Region-NOR--osm-Finland--fi--impact-Region-SWE--impact-Region-DNK]-720x360.png"
