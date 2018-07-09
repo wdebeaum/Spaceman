@@ -15,7 +15,7 @@ var {
 <body>
 <h1>Spaceman</h1>
 William de Beaumont<br>
-$Date: 2018/02/21 19:07:52 $
+$Date: 2018/07/09 20:22:46 $
 
 <h2>Introduction</h2>
 <p>Spaceman is a TRIPS module that turns language-derived descriptions of spatial locations (such as names of countries) into descriptions that explicitly specify which points on the Earth's surface are inside or outside those locations, in raster (e.g. GTiff) or vector (e.g. GeoJSON) formats. In some cases it can instead output standard codes (e.g. ISO country codes). It can make use of IMPACT data for names of countries, basins, and food production units (FPUs), and it can make use of ISO data for names of countries. Failing that, it can use <a href="https://www.openstreetmap.org/">OpenStreetMap</a>.</p>
@@ -87,7 +87,7 @@ $Date: 2018/02/21 19:07:52 $
   (reply :content (report :content (answer :location
     (code :code <var>code</var> :standard "<var>standard-name</var>"))))
 </pre></code>
-<p>Or if multiple countries are selected (because you asked for the ISO code of one of IMPACT's regions that include multiple countries, like "France Plus"):</p>
+<p>Or if multiple countries are selected (because you asked for the ISO code of a region that includes multiple countries, like IMPACT's "France Plus"):</p>
 <code><pre>
   (reply :content (report :content (answer :location
     (list
@@ -106,22 +106,35 @@ $Date: 2018/02/21 19:07:52 $
 
 <h3>Complex Descriptions</h3>
 
-<p>The <var>description</var> expression may be of any of the following forms. However, when using <code>code</code> output formats, only the first three are allowed (no <code>osm</code> atoms, no shape atoms, and no point-set operations), and an error will occur if the result is not representable using a code of the requested type (e.g. you asked for an ISO country code and the result is not a country).</p>
+<p>The <var>description</var> expression may be of any of the following forms. However, when using <code>code</code> output formats, OSM-based atoms and shape atoms are not allowed, and an error will occur if the result is not representable using a code or list of codes of the requested type (e.g. you asked for an ISO country code and the result is not a country or list of countries).</p>
 
 <h4>Lookup atoms</h4>
 <dl>
 <dt><code>"<var>region name or code</var>"</code>
-<dd>Look up the region (or basin, or FPU) by name or code in IMPACT, or failing that, look up the region by name in OSM. Equivalent to the first of these for which lookup succeeds: <code>impact</code>, <code>iso</code>, <code>osm</code>.
+<dd>Look up the region (or basin, or FPU) by name or code in IMPACT, or failing that, look up the region by (ISO?) name in OSM. Equivalent to the first of these for which lookup succeeds: <code>impact</code>, <code>iso</code>, <code>osm</code>.
 <dt><code>(impact "<var>region name or code</var>")</code>
-<dd>Look up the region by name or code in IMPACT. Codes can be three-letter region (country-ish) codes, three-letter basin codes, or <code><var>basin</var>_<var>region</var></code> FPU codes. Larger regional aggregations (e.g. <code>"FSU"</code> = "Former Soviet Union") are not yet supported.
+<dd>Look up the region by name or code in IMPACT. Codes can be three-letter region (country-ish) codes, three-letter basin codes, or <code><var>basin</var>_<var>region</var></code> FPU codes. When a region and a basin share a name, the region takes precedence (use <code>basin</code> instead to get the basin). Larger regional aggregations (e.g. <code>"FSU"</code> = "Former Soviet Union") are not yet supported.
 <dt><code>(iso "<var>region name or code</var>")</code>
-<dd>Look up the region by name or code in <a href="https://en.wikipedia.org/wiki/ISO_3166">ISO 3166</a>, and then use that to look up the map of that region in IMPACT or OSM as appropriate (IMPACT merges some countries into larger groups, so we must look the individual countries up in OSM instead). Currently only countries (ISO 3166-1) are supported. <em>TODO: subdivisions (ISO 3166-2).</em> Two-letter, three-letter, or three-digit codes may be used.
+<dd>Look up the region by name or code in <a href="https://en.wikipedia.org/wiki/ISO_3166">ISO 3166</a>, and then use that to look up the map of that region in IMPACT or OSM as appropriate (IMPACT merges some countries into larger groups, so we must look the individual countries up in OSM instead). Currently only countries (ISO 3166-1) and groups thereof are supported. <em>TODO: subdivisions (ISO 3166-2).</em> Two-letter, three-letter, or three-digit codes may be used. If the argument is not the name of a country, but is the name of a continent or subcontinent, <code>iso</code> will fall back to <code>continent</code> or <code>subcontinent</code> (in that order).
 <dt><code>(osm "<var>region name</var>" [ "<var>country code</var>" ] )</code>
 <dd>Look up the region by name on OpenStreetMap. The search may be restricted to a specific country by giving its ISO code (any of them) as the second argument. That also works for the country itself, e.g. <code>(osm "Georgia" "GE")</code> is the country of Georgia, while <code>(osm "Georgia" "US")</code> is the U.S. state of Georgia.
 <dt><code>WD</code> (no quotes)
 <dd>The whole world, i.e. the union of all the countries. Excludes oceans etc., and notably Antarctica.
+<dt><code>(continent "<var>continent name</var>")</code>
+<dd>The union of the countries in the named continental region ("region" in ISO). Note that in general continents do not have universally well-defined borders, and several countries span multiple continents, but this uses ISO's approximation that puts each country in exactly one "region". A few possibly-surprising results of this are: "Oceania" is a continent, "Americas" is one continent (not two), Russia is in Europe, and Turkey is in Asia. Note that since this is from ISO data, the continent "Antarctica" only includes a few nearby island countries, and not the continent itself, which is countryless (actually these islands have the empty string in the "region" and "subregion" fields, but I figured it out and corrected them).
+<dt><code>(subcontinent "<var>subcontinent name</var>")</code>
+<dd>The union of the countries in the named sub-continental region ("subregion" in ISO). Similar caveats apply here. There is no "Indian Subcontinent" (India is in "Southern Asia"), and "Americas" is split into four pieces (not two): "Northern America" (not "North"), "South America" (not "Southern"), "Central America", and "Caribbean" (not "Caribbean America").
+<dt><code>(country "<var>country name or code</var>")</code>
+<dd>Like <code>(iso "<var>country name or code</var>")</code>, except it's restricted to countries. Right now that means it doesn't do the fallbacks to <code>continent</code> and <code>subcontinent</code>. But if <code>iso</code> ever starts supporting subdivisions, this will stay restricted to countries only.
+<dt><code>(state "<var>state or province name</var>" [ "<var>country code</var>" ] )</code>
+<dd>Like <code>osm</code>, but restricted to places that are states or provinces (smaller parts of countries). These have <code>place=state</code> or <code>place=province</code> in OSM.
+<dt><code>(county "<var>county or district name</var>" [ "<var>country code</var>" ] )</code>
+<dd>Like <code>osm</code>, but restricted to places that are counties or districts (generally smaller parts of <code>state</code>s). These have <code>place=county</code> or <code>place=district</code> in OSM.
+<dt><code>(fpu "<var>basin code</var>_<var>region code</var>")</code>
+<dd>Look up the FPU by its code in IMPACT.
+<dt><code>(basin "<var>basin name or code</var>")</code>
+<dd>Look up the river basin by its name or code in IMPACT.
 </dl>
-<em>TODO: allow restriction by type, e.g. <code>(basin "Mississippi")</code> vs. <code>(state "Mississippi")</code>, and <code>(state "Georgia")</code> vs. <code>(country "Georgia")</code>?</em>
 
 <h4>Shape atoms</h4>
 <dl>
@@ -134,7 +147,7 @@ $Date: 2018/02/21 19:07:52 $
 </dl>
 <em>TODO: other shape atoms?</em>
 
-<h4>Point-set operations</h4>
+<h4>Set operations</h4>
 <dl>
 <dt><code>(intersection <var>regions...</var>)</code>
 <dd>The intersection of the set of points in one or more regions (which are themselves represented as description expressions).
@@ -148,10 +161,12 @@ $Date: 2018/02/21 19:07:52 $
 
 <p>Note that for the purpose of set operations on vector data, regions are always taken to be closed regular sets of points, and the results are also so regularized. So you'll never see a degenerate piece of geometry like an isolated curve or point, only areas. For example, when you have two regions <var>A</var> and <var>B</var> that share a boundary but don't otherwise overlap, <code>(union <var>A</var> <var>B</var>)</code> will count the shared boundary as part of the interior, while <code>(intersection <var>A</var> <var>B</var>)</code> will be empty (the shared boundary is counted as part of the exterior). In both cases, the shared boundary is not explicitly mentioned in the output, because it would be a degenerate piece of geometry with no area.</p>
 
+<p>These operations also work on sets of codes in the same way as sets of points, but mixing codes and points won't work, and mixing codes from different standards might not work. The complement of a set of codes (from the same standard) is all the codes from that standard except those in that set. Converting the resulting complement code set to a (raster or vector) image will not give the same result as taking the complement after converting to an image, because the "universe" is different (all countries vs. the whole surface of the Earth).</p>
+
 <h4>Other</h4>
 <dl>
 <dt><code>(neighbors <var>country</var>)</code>
-<dd>The countries neighboring <var>country</var>. For now this only works on countries, not other types of region (not even IMPACT regions of multiple countries like "France Plus"). So it's recommended to use it like this: <code>(neighbors (iso "<var>country name or code</var>"))</code>. If the selected country has more than one neighbor, they will be wrapped in a <code>list</code> structure; if it has no neighbors, an <code>unknown-object</code> failure will result. Point-set operations (and <code>neighbors</code> itself) do not work on <code>list</code> structures, so <code>neighbors</code> should not be used as an argument to other descriptions.
+<dd>The countries neighboring <var>country</var>. For now this only works on countries, not other types of region (not even IMPACT regions of multiple countries like "France Plus"). So it's recommended to use it like this: <code>(neighbors (country "<var>country name or code</var>"))</code>. If the selected country has more than one neighbor, they will be wrapped in a <code>list</code> structure; if it has no neighbors, an <code>unknown-object</code> failure will result. <code>neighbors</code> does not work on <code>list</code> structures, so <code>neighbors</code> should not be used as an argument to itself, like <code>(neighbors (neighbors <var>country</var>))</code>.
 </dl>
 
 <h3>Examples</h3>
@@ -179,7 +194,7 @@ $Date: 2018/02/21 19:07:52 $
   ;; on OSM and gets its borders as an SVG path
   (reply :receiver nil :content (report :content (answer :location
     (file
-      :name "/Users/wbeaumont/cwms/etc/Spaceman/cache/osm/France--fr.svg"
+      :name "/Users/wbeaumont/cwms/etc/Spaceman/cache/osm/France--country--fr.svg"
       :format (vector "SVG")
       ))))
 
@@ -258,8 +273,48 @@ $Date: 2018/02/21 19:07:52 $
     ))
   (reply :receiver nil :content (report :content (answer :location
     (file
-      :name "/Users/wbeaumont/cwms/etc/Spaceman/cache/computed/[union--impact-Region-ISL--impact-Region-NOR--osm-Finland--fi--impact-Region-SWE--impact-Region-DNK]-720x360.png"
+      :name "/Users/wbeaumont/cwms/etc/Spaceman/cache/computed/[union--impact-Region-DNK--impact-Region-ISL--impact-Region-NOR--impact-Region-SWE--osm-Finland--country--fi]-720x360.png"
       :format (raster "PNG" 720 360)))))
+
+  ;; tell Spaceman to get a PDF of Ulster county in the US
+  (request :content (get-geographic-region
+    :description (county "Ulster" "US")
+    :format (vector "PDF")))
+  ;; Spaceman looks it up using OSM
+  (reply :receiver nil :content (report :content (answer :location
+    (file
+      :name "/Users/wbeaumont/cwms/etc/Spaceman/cache/osm/ulster--county--us.pdf"
+      :format (vector "PDF")))))
+
+  ;; tell Spaceman to get the 3-letter country codes of all countries in the Caribbean
+  (request :content (get-geographic-region
+    :description (subcontinent "Caribbean")
+    :format (code "ISO 3166-1 alpha-3")))
+  ;; Spaceman looks Caribbean up in ISO subregions
+  (reply :receiver nil :content (report :content (answer :location
+    (list ABW AIA ATG BES BHS BLM BRB CUB CUW CYM DMA DOM GLP GRD
+          HTI JAM KNA LCA MAF MSR MTQ PRI SXM TCA TTO VCT VGB VIR))))
+
+  ;; tell Spaceman to get a PDF of the Mississippi river basin (not the state)
+  (request :content (get-geographic-region
+    :description (basin "Mississippi")
+    :format (vector "PDF")))
+  ;; Spaceman looks it up in IMPACT
+  (reply :receiver nil :content (report :content (answer :location
+    (file
+      :name "/Users/wbeaumont/cwms/etc/Spaceman/cache/impact/Basin-MIS.pdf"
+      :format (vector "PDF")))))
+
+  ;; tell Spaceman to get the 3-letter codes of the neighbors of Mexico that are in Central America
+  (request :content (get-geographic-region
+    :description
+      (intersection
+        (neighbors (country "Mexico"))
+	(subcontinent "Central America"))
+    :format (code "ISO 3166-1 alpha-3")))
+  ;; Belize and Guatemala neighbor Mexico in Central America
+  (reply :receiver nil :content (report :content (answer :location
+    (list BLZ GTM))))
 
 </pre></code>
 

@@ -1,7 +1,7 @@
 'use strict';
 
 const util = require('util');
-const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const child_process = require('child_process');
 const querystring = require('querystring');
@@ -244,22 +244,22 @@ util.inherits(Spaceman, CWCModule);
 	// by trying a different method. So even though some errors are async,
 	// try/catch still kind of works here.
 	try {
-	  this.evaluateImpact(format, formatStyle, formatName, searchStr, callback);
+	  this.evaluateImpact(format, formatStyle, formatName, undefined, searchStr, callback);
 	  // TODO? wrap callback so that if impact fails because format is unsupported (e.g. SVG), we try ISO/OSM if it's a region (country) and not a basin or FPU
 	} catch (impactError) {
 	  try {
-	    this.evaluateIso(format, formatStyle, formatName, searchStr, callback);
+	    this.evaluateIso(format, formatStyle, formatName, undefined, searchStr, callback);
 	  } catch (isoError) {
 	    if (formatStyle == 'code') { // OSM doesn't output codes
 	      callback(errors.nestedError('', isoError));
 	    } else {
-	      this.evaluateOsm(format, formatStyle, formatName, searchStr, undefined, callback);
+	      this.evaluateOsm(format, formatStyle, formatName, undefined, searchStr, undefined, callback);
 	    }
 	  }
 	}
       } else if (typeof(description[0]) == 'string') {
 	var verb = description[0].toLowerCase();
-	if (verb == 'impact') {
+	if (verb == 'impact' || verb == 'fpu' || verb == 'basin') {
 	  if (description.length != 2) {
 	    throw errors.invalidArgumentCount(description, 1);
 	  }
@@ -267,8 +267,8 @@ util.inherits(Spaceman, CWCModule);
 	    throw errors.invalidArgument(description, 1, "string");
 	  }
 	  var searchStr = KQML.kqmlStringAsJS(description[1]).toLowerCase();
-	  this.evaluateImpact(format, formatStyle, formatName, searchStr, callback);
-	} else if (verb == 'iso') {
+	  this.evaluateImpact(format, formatStyle, formatName, verb, searchStr, callback);
+	} else if (verb == 'iso' || verb == 'country') {
 	  if (description.length != 2) {
             throw errors.invalidArgumentCount(description, 1);
 	  }
@@ -276,7 +276,16 @@ util.inherits(Spaceman, CWCModule);
 	    throw errors.invalidArgument(description, 1, "string");
 	  }
 	  var searchStr = KQML.kqmlStringAsJS(description[1]).toLowerCase();
-	  this.evaluateIso(format, formatStyle, formatName, searchStr, callback);
+	  this.evaluateIso(format, formatStyle, formatName, verb, searchStr, callback);
+	} else if (verb == 'subcontinent' || verb == 'continent') {
+	  if (description.length != 2) {
+            throw errors.invalidArgumentCount(description, 1);
+	  }
+	  if (!KQML.isKQMLString(description[1])) {
+	    throw errors.invalidArgument(description, 1, "string");
+	  }
+	  var searchStr = KQML.kqmlStringAsJS(description[1]).toLowerCase();
+	  this.evaluateContinent(format, verb, searchStr, callback);
  	} else if (verb == 'neighbors') {
  	  if (description.length != 2) {
  	    throw errors.invalidArgumentCount(description, 1);
@@ -310,6 +319,7 @@ util.inherits(Spaceman, CWCModule);
  		  },
  		  callback // on failure, just do the main callback
  		);
+	      // TODO? handle lists of codes
  	      } else if (center[0] == 'failure') {
  		callback(center);
  	      } else {
@@ -319,9 +329,38 @@ util.inherits(Spaceman, CWCModule);
  	      callback(errors.nestedError("while processing neighbors results: ", err));
  	    }
  	  });
+	} else if (verb == 'intersection') {
+	  if (formatStyle == 'raster') {
+	    this.composite(format, 'intersection', 'darken', description.slice(1),
+			   [], callback);
+	  } else if (formatStyle == 'vector') {
+	    this.vectorSetOp(format, verb, description.slice(1), callback);
+	  } else { // code
+	    this.codeListSetOp(format, verb, description.slice(1), callback);
+	  }
+	} else if (verb == 'union') {
+	  if (formatStyle == 'raster') {
+	    this.composite(format, 'union', 'lighten', description.slice(1),
+			   [], callback);
+	  } else if (formatStyle == 'vector') {
+	    this.vectorSetOp(format, verb, description.slice(1), callback);
+	  } else { // code
+	    this.codeListSetOp(format, verb, description.slice(1), callback);
+	  }
+	} else if (verb == 'complement') { // complement of union
+	  if (formatStyle == 'raster') {
+	    this.composite(format, 'complement', 'darken', description.slice(1),
+			   ['-negate'], callback);
+	  } else if (formatStyle == 'vector') {
+	    this.vectorSetOp(format, verb, description.slice(1), callback);
+	  } else { // code
+	    this.codeListSetOp(format, verb, description.slice(1), callback);
+	  }
+	} else if (verb == 'difference') {
+	  this.evaluateDescription(format, ['intersection', description[1], ['complement'].concat(description.slice(2))], callback);
 	} else if (formatStyle == 'code') {
-	  throw errors.invalidArgumentCombo("only raw search strings, WD, iso, or impact may be used as descriptions with code output format");
-	} else if (verb == 'osm') {
+	  throw errors.invalidArgumentCombo("shape atoms and OSM-based lookup atoms may not be used as descriptions with code output format");
+	} else if (verb == 'osm' || verb == 'state' || verb == 'county') {
 	  if (description.length < 2 || description.length > 3) {
 	    throw errors.invalidArgumentCount(description, '1 or 2');
 	  }
@@ -341,7 +380,7 @@ util.inherits(Spaceman, CWCModule);
 	    // standardize on 2-letter code
 	    countryCode = this.isoCodeToCountry[countryCode].twoLetter;
 	  }
-	  this.evaluateOsm(format, formatStyle, formatName, searchStr, countryCode, callback);
+	  this.evaluateOsm(format, formatStyle, formatName, verb, searchStr, countryCode, callback);
 	} else if (verb == 'box') {
 	  if (description.length != 5) {
 	    throw errors.invalidArgumentCount(description, 4);
@@ -382,29 +421,6 @@ util.inherits(Spaceman, CWCModule);
 	    throw errors.invalidArgumentCount(description, 2);
 	  }
 	  this.evaluateDescription(format, ['box', description[1], -90, description[2], 90], callback);
-	} else if (verb == 'intersection') {
-	  if (formatStyle == 'raster') {
-	    this.composite(format, 'intersection', 'darken', description.slice(1),
-			   [], callback);
-	  } else {
-	    this.vectorSetOp(format, verb, description.slice(1), callback);
-	  }
-	} else if (verb == 'union') {
-	  if (formatStyle == 'raster') {
-	    this.composite(format, 'union', 'lighten', description.slice(1),
-			   [], callback);
-	  } else {
-	    this.vectorSetOp(format, verb, description.slice(1), callback);
-	  }
-	} else if (verb == 'complement') { // complement of union
-	  if (formatStyle == 'raster') {
-	    this.composite(format, 'complement', 'darken', description.slice(1),
-			   ['-negate'], callback);
-	  } else {
-	    this.vectorSetOp(format, verb, description.slice(1), callback);
-	  }
-	} else if (verb == 'difference') {
-	  this.evaluateDescription(format, ['intersection', description[1], ['complement'].concat(description.slice(2))], callback);
 	} else {
 	  throw errors.unknownAction(verb);
 	}
@@ -437,11 +453,15 @@ util.inherits(Spaceman, CWCModule);
     }
   },
 
-  function evaluateImpact(format, formatStyle, formatName, searchStr, callback) {
-    if (!(searchStr in this.impactNames)) {
-      throw errors.unknownObject(['impact', `"${KQML.escapeForQuotes(searchStr)}"`]);
+  function evaluateImpact(format, formatStyle, formatName, verb, searchStr, callback) {
+    var table = (verb == 'basin' ? this.basinNames : this.impactNames);
+    if (!(searchStr in table)) {
+      throw errors.unknownObject([verb || 'impact', `"${KQML.escapeForQuotes(searchStr)}"`]);
     }
-    var metadata = this.impactNames[searchStr];
+    var metadata = table[searchStr];
+    if (verb == 'fpu' && metadata.type != 'FPU') {
+      throw errors.unknownObject(['fpu', `"${KQML.escapeForQuotes(searchStr)}"`]);
+    }
     if (formatStyle == 'code') {
       if (formatName == 'impact') {
 	callback(codeKQML(metadata.code, 'IMPACT'));
@@ -508,7 +528,7 @@ util.inherits(Spaceman, CWCModule);
     }
   },
 
-  function evaluateIso(format, formatStyle, formatName, searchStr, callback) {
+  function evaluateIso(format, formatStyle, formatName, verb, searchStr, callback) {
     // find a single ISO country structure using searchStr
     var country = undefined;
     if (searchStr in this.isoCodeToCountry) {
@@ -517,13 +537,23 @@ util.inherits(Spaceman, CWCModule);
       if (this.nameToCountries[searchStr].length == 1) {
 	country = this.nameToCountries[searchStr][0];
       } else {
-	throw errors.ambiguous(['iso', `"${KQML.escapeForQuotes(searchStr)}"`],
+	throw errors.ambiguous([verb || 'iso', `"${KQML.escapeForQuotes(searchStr)}"`],
 	                this.nameToCountries[searchStr].map(
 			  (country) =>
 			    ['iso', `"${country.twoLetter.toUpperCase()}"`]));
       }
     } else {
-      throw errors.unknownObject(['iso', `"${KQML.escapeForQuotes(searchStr)}"`]);
+      if (verb != 'country') {
+	// fall back to continent, then subcontinent
+	if (searchStr in this.continentToCountries) {
+	  this.evaluateContinent(format, 'continent', searchStr, callback);
+	  return;
+	} else if (searchStr in this.subcontinentToCountries) {
+	  this.evaluateContinent(format, 'subcontinent', searchStr, callback);
+	  return;
+	}
+      }
+      throw errors.unknownObject([verb || 'iso', `"${KQML.escapeForQuotes(searchStr)}"`]);
     }
     // now country is set
     if (formatStyle == 'code') {
@@ -534,14 +564,24 @@ util.inherits(Spaceman, CWCModule);
     } else {
       if (country.threeLetter != country.impactCode) {
 	// impact doesn't have this specific country, only a merged "region", so look up the actual country in OSM
-	this.evaluateOsm(format, formatStyle, formatName, country.names[0], country.twoLetter, callback);
+	this.evaluateOsm(format, formatStyle, formatName, 'country', country.names[0], country.twoLetter, callback);
       } else { // impact does have this country (in theory)
 	this.evaluateImpact(format, formatStyle, formatName, country.impactCode, callback);
       }
     }
   },
 
-  function evaluateOsm(format, formatStyle, formatName, searchStr, countryCode, callback) {
+  // continent or subcontinent from ISO
+  function evaluateContinent(format, verb, searchStr, callback) {
+    var countries = this[verb + 'ToCountries'][searchStr.toLowerCase()];
+    if (!countries) {
+      throw errors.unknownObject([verb, `"${KQML.escapeForQuotes(searchStr)}"`]);
+    }
+    var newDesc = ['union', ...countries.map(c => ['iso', `"${c.twoLetter}"`])];
+    this.evaluateDescription(format, newDesc, callback);
+  },
+
+  function evaluateOsm(format, formatStyle, formatName, verb, searchStr, countryCode, callback) {
     var osmFormat = 'geojson';
     var convert = true;
     if (formatStyle == 'vector') {
@@ -552,8 +592,16 @@ util.inherits(Spaceman, CWCModule);
       } else if (formatName == 'wkt') { osmFormat = 'text';
       } else { convert = true; }
     }
+    var placeTypes = undefined;
+    if (verb == 'country') {
+      placeTypes = ['country'];
+    } else if (verb == 'state') {
+      placeTypes = ['state', 'province'];
+    } else if (verb == 'county') {
+      placeTypes = ['county', 'district'];
+    }
     if (convert) {
-      this.osm(osmFormat, searchStr, countryCode, result => {
+      this.osm(osmFormat, placeTypes, searchStr, countryCode, result => {
 	if (result[0] == 'file') { // success
 	  var filename = KQML.kqmlStringAsJS(result.name);
 	  var base = filename.replace(/\.[^\.]+$/, '');
@@ -574,7 +622,7 @@ util.inherits(Spaceman, CWCModule);
 	}
       });
     } else {
-      this.osm(osmFormat, searchStr, countryCode, result => {
+      this.osm(osmFormat, placeTypes, searchStr, countryCode, result => {
 	result.format = format;
 	callback(result)
       });
@@ -782,6 +830,91 @@ util.inherits(Spaceman, CWCModule);
     );
   },
 
+  function codeListSetOp(format, operator, argDescs, callback) {
+    this.evaluateArguments(format, operator, argDescs,
+      results => {
+	// get a simple list of lists of code strings from results, as well as
+	// the code standard (which should be the same for all codes)
+	var standard;
+	var codeLists = [];
+	results.forEach(result => {
+	  var codeList;
+	  if (result[0] == 'code') {
+	    codeList = [result.code];
+	    if (!standard) {
+	      standard = KQML.kqmlStringAsJS(result.standard);
+	    }
+	  } else { // list
+	    codeList = result.slice(1).map(codeKQML => codeKQML.code);
+	    if (result.length > 1 && !standard) {
+	      standard = KQML.kqmlStringAsJS(result[1].standard);
+	    }
+	  }
+	  codeLists.push(codeList);
+	});
+	var resultCodeList;
+	switch(operator) {
+	  case 'intersection':
+	    var first = codeLists[0];
+	    var rest = codeLists.slice(1);
+	    // get the codes from the first list that every other list includes
+	    resultCodeList =
+	      first.filter(code =>
+	        rest.every(codeList => codeList.includes(code)));
+	    break;
+	  case 'union':
+	    // put all codes into the keys of an Object to deduplicate them
+	    var codeMap = {};
+	    codeLists.forEach(codeList => {
+	      codeList.forEach(code => {
+		codeMap[code] = true;
+	      });
+	    });
+	    resultCodeList = Object.keys(codeMap);
+	    break;
+	  case 'complement':
+	    // put all codes from the standard into the keys of an Object
+	    var codeMap = {};
+	    if (standard == 'IMPACT') {
+	      for (var impactRegionCode in this.regions) {
+		codeMap[impactRegionCode.toUpperCase()] = true;
+	      }
+	    } else { // ISO of some flavor
+	      for (var code in this.isoCodeToCountry) {
+		// use only 3-digit codes so we don't dupe
+		if (/^\d{3}$/.test(code)) {
+		  var theCodeKQML =
+		    this.countryToCodeKQML(this.isoCodeToCountry[code],
+					   standard);
+		  codeMap[theCodeKQML.code] = true;
+		}
+	      }
+	    }
+	    // delete the ones that are in the codeLists
+	    codeLists.forEach(codeList => {
+	      codeList.forEach(code => {
+		delete codeMap[code];
+	      });
+	    });
+	    resultCodeList = Object.keys(codeMap);
+	    break;
+	  default:
+	    throw unknownAction(operator);
+	}
+	var resultKQMLList =
+	  resultCodeList.sort().map(code => codeKQML(code, standard));
+	if (resultKQMLList.length == 0) {
+	  throw errors.unknownObject([operator, ...argDescs]);
+	} else if (resultKQMLList.length == 1) {
+	  callback(resultKQMLList[0]);
+	} else {
+	  callback(['list', ...resultKQMLList]);
+	}
+      },
+      callback
+    );
+  },
+
   function convertRasterFormats(format, inputFile, outputBase, extraMagickArgs, callback) {
     var formatName = KQML.kqmlStringAsJS(format[1]).toLowerCase();
     var width = format[2];
@@ -813,9 +946,14 @@ util.inherits(Spaceman, CWCModule);
   /* Call OSM or get cached response. Similar interface to evaluateDescription,
    * except format must be one of 'kml', 'svg', 'text' (for WKT), or 'geojson'.
    */
-  function osm(format, searchStr, countryCode, callback) {
+  function osm(format, placeTypes, searchStr, countryCode, callback) {
     searchStr = searchStr.replace(/[^\w\d,\.-]/g, ' ');
     var basename = searchStr.replace(/\s/g, '_');
+    var verb = 'osm';
+    if (placeTypes) {
+      verb = placeTypes[0]; // HACK: this just happens to be so
+      basename += '--' + verb;
+    }
     if (countryCode) {
       countryCode = countryCode.toLowerCase();
       basename += '--' + countryCode;
@@ -833,10 +971,13 @@ util.inherits(Spaceman, CWCModule);
       if (countryCode) {
 	query.countrycodes = countryCode;
       }
+      if (placeTypes) {
+	query.extratags = 1;
+      }
       var host = 'nominatim.openstreetmap.org';
       var path = '/search?' + querystring.stringify(query);
-      console.log(`http://${host}/${path}`);
-      var req = http.request({
+      console.log(`https://${host}/${path}`);
+      var req = https.request({
 	host: host,
 	path: path,
 	headers: {
@@ -850,6 +991,11 @@ util.inherits(Spaceman, CWCModule);
 	    res.on('end', () => {
 	      try {
 		var json = JSON.parse(content);
+		if (placeTypes) {
+		  json = json.filter(x =>
+		    ('extratags' in x) && placeTypes.includes(x.extratags.place)
+		  );
+		}
 		if (json.length >= 1) {
 		  var polygons = json[0][format];
 		  if (format == 'geojson') {
@@ -861,15 +1007,15 @@ util.inherits(Spaceman, CWCModule);
 		  fs.writeFileSync(filename, polygons); // TODO de-Sync-ify
 		  callback(fileKQML(filename, format));
 		} else {
-		  throw errors.unknownObject(['osm', `"${KQML.escapeForQuotes(searchStr)}"`]);
+		  throw errors.unknownObject([verb, `"${KQML.escapeForQuotes(searchStr)}"`]);
 		}
 	      } catch (err) {
 		callback(errors.nestedError('while processing OSM response: ', err));
 	      }
 	    });
 	  } else {
-	    res.abort();
-	    throw errors.programError('nominatim returned status code ' + res.statusCode);
+	    req.abort();
+	    throw errors.programError('nominatim returned status code ' + res.statusCode + '; headers: ' + JSON.stringify(res.headers));
 	  }
 	} catch (err) {
 	  callback(errors.nestedError('', err));
@@ -913,12 +1059,14 @@ util.inherits(Spaceman, CWCModule);
       }
     });
     this.impactNames = {};
+    this.basinNames = {};
     for (var c in this.fpus) {
       this.impactNames[c.toLowerCase()] = this.fpus[c];
     }
     for (var c in this.basins) {
       var name = this.basins[c].name.toLowerCase();
       this.impactNames[c.toLowerCase()] = this.impactNames[name] =
+      this.basinNames[c.toLowerCase()] = this.basinNames[name] =
         this.basins[c];
     }
     for (var c in this.regions) {
@@ -932,6 +1080,8 @@ util.inherits(Spaceman, CWCModule);
     this.isoCodeToCountry = {};
     this.impactCodeToCountries = {};
     this.nameToCountries = {};
+    this.continentToCountries = {};
+    this.subcontinentToCountries = {};
     var str = fs.readFileSync(installDir + '/countries.json', 'utf-8');
     var countries = JSON.parse(str);
     // add some countries missing from countries.json that we would have gotten
@@ -945,6 +1095,8 @@ util.inherits(Spaceman, CWCModule);
       cca2: 'BQ',
       cca3: 'BES',
       ccn3: '535',
+      region: 'Americas',
+      subregion: 'Caribbean',
       borders: []
     });
     countries.push({
@@ -956,14 +1108,24 @@ util.inherits(Spaceman, CWCModule);
       cca2: 'SH',
       cca3: 'SHN',
       ccn3: '654',
+      // they're kind of in the middle of the south atlantic ocean, but I'm
+      // guessing they're closest to the "Southern Africa" region
+      region: 'Africa',
+      subregion: 'Southern Africa',
       borders: []
     });
     countries.forEach((json) => {
+      if (json.region == '') {
+	json.region = "Antarctica";
+	json.subregion = "Antarctica";
+      }
       var country = {
 	twoLetter: json.cca2.toLowerCase(),
 	threeLetter: json.cca3.toLowerCase(),
 	threeDigit: json.ccn3,
 	names: [json.name.common, json.name.official, ...json.altSpellings],
+	continent: json.region,
+	subcontinent: json.subregion,
 	neighborCodes: json.borders
       };
       var newNames = [];
@@ -998,6 +1160,16 @@ util.inherits(Spaceman, CWCModule);
       if (country.impactCode != country.threeLetter) {
 	country.impactMergedName = country.names.pop();
       }
+      var lcContinent = country.continent.toLowerCase();
+      if (!(lcContinent in this.continentToCountries)) {
+	this.continentToCountries[lcContinent] = [];
+      }
+      this.continentToCountries[lcContinent].push(country);
+      var lcSubcontinent = country.subcontinent.toLowerCase();
+      if (!(lcSubcontinent in this.subcontinentToCountries)) {
+	this.subcontinentToCountries[lcSubcontinent] = [];
+      }
+      this.subcontinentToCountries[lcSubcontinent].push(country);
     });
     // convert neighbor codes to neighbor objects
     countries.forEach((json) => {
