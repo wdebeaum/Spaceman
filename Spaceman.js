@@ -7,7 +7,8 @@ const child_process = require('child_process');
 const querystring = require('querystring');
 
 const KQML = require('KQML/kqml.js');
-const TripsModule = require('TripsModule/trips-module.js');
+const CWCModule = require('util/cwc/cwc-module.js');
+const errors = require('util/cwc/errors.js');
 const SetOps = require('set-ops.js');
 
 const installDir = process.env.TRIPS_BASE + '/etc/Spaceman';
@@ -69,100 +70,6 @@ function codeKQML(code, standard) {
   return { 0: 'code', code: code.toUpperCase(), standard: `"${standard}"` };
 }
 
-// failures to be thrown
-
-/* Something threw a real JS Error object, or a web request or external command
- * failed unexpectedly. Something that isn't a malformed request or a search
- * failure.
- */
-function programError(message) {
-  return { 0: 'failure', type: 'cannot-perform', reason:
-    { 0: 'program-error', message: `"${KQML.escapeForQuotes(message)}"` }
-  };
-}
-
-/* An error/failure was thrown somwhere deeper in the program. */
-function nestedError(prefix, err) {
-  if ('message' in err) {
-    console.warn(err.stack);
-    return programError(prefix + err.message);
-  } else {
-    return err;
-  }
-}
-
-/* Some part of the request is missing an argument we expected. */
-function missingArgument(op, arg) {
-  return { 0: 'failure', type: 'failed-to-interpret', reason:
-    { 0: 'missing-argument',
-      operator: op,
-      argument: arg
-    }
-  };
-}
-
-/* Some part of the request has an argument we expected to be something else. */
-function invalidArgument(operation, argument, expected) {
-  var op = operation[0];
-  var got = operation[argument];
-  return { 0: 'failure', type: 'failed-to-interpret', reason:
-    { 0: 'invalid-argument',
-      operator: op,
-      argument: argument,
-      expected: `"${KQML.escapeForQuotes(expected)}"`,
-      got: got
-    }
-  };
-}
-
-/* Some part of the request has the wrong number of (positional) arguments. */
-function invalidArgumentCount(operation, expected) {
-  var op = operation[0];
-  var got = operation.length-1;
-  return { 0: 'failure', type: 'failed-to-interpret', reason:
-    { 0: 'invalid-argument-count',
-      operator: op,
-      expected: `"${KQML.escapeForQuotes(expected)}"`,
-      got: got
-    }
-  };
-}
-
-/* The request uses arguments that might be OK on their own but don't work in
- * combination.
- */
-function invalidArgumentCombo(comment) {
-  return { 0: 'failure', type: 'failed-to-interpret', reason:
-    { 0: 'invalid-argument-combo',
-      comment: `"${KQML.escapeForQuotes(comment)}"`
-    }
-  };
-}
-
-/* Something in operator position in the request isn't an operator we
- * recognize.
- */
-function unknownAction(what) {
-  return { 0: 'failure', type: 'failed-to-interpret', reason:
-    { 0: 'unknown-action', what: what }
-  };
-}
-
-/* We can't find the thing you're talking about. */
-function unknownObject(what) {
-  return { 0: 'failure', type: 'cannot-perform', reason:
-    { 0: 'unknown-object', what: what }
-  };
-}
-
-/* We found more than one match for the thing you're talking about. */
-function ambiguous(what, resolutions) {
-  return { 0: 'failure', type: 'cannot-perform',
-    reason: { 0: 'ambiguous', what: what },
-    possibleResolution: resolutions
-  };
-}
-
 // other useful functions
 
 /* modify the array dst by adding all elements of src to the end */
@@ -183,11 +90,11 @@ function makeOrGetFile(name, format, callback, program, ...args) {
       console.log([program, ...args].join(' '));
       child_process.execFile(program, args, (error, stdout, stderr) => {
 	if (error) {
-	  callback(programError(error.message + 'stderr output: ' + stderr));
+	  callback(errors.programError(error.message + 'stderr output: ' + stderr));
 	} else {
 	  fs.access(name, fs.constants.F_OK, (err2)=>{
 	    if (err2) {
-	      callback(programError(`${program} succeeded, but did not create its output file.\nstderr output: ${stderr}`));
+	      callback(errors.programError(`${program} succeeded, but did not create its output file.\nstderr output: ${stderr}`));
 	    } else {
 	      callback(fileKQML(name, format));
 	    }
@@ -226,33 +133,26 @@ function ringsEqual(a, b) {
 }*/
 
 function Spaceman(argv, oninit) {
-  TripsModule.call(this, argv);
+  CWCModule.call(this, argv);
   this.name = 'Spaceman';
   this.init(() => {
     this.readImpactMetadata();
     this.readIso3166();
     this.initFormats();
-    this.addHandler(KQML.parse('(request &key :content (get-geographic-region . *))'),
-    		    this.handleGet);
-    this.addHandler(KQML.parse('(tell &key :content (i-am-here &key :who cwmsagent))'),
-                    this.declareCapabilitiesOnce);
-    this.addHandler(KQML.parse('(request &key :content (restart))'), () => {
-      this.alreadyDeclaredCapabilities = false;
-      this.sendMsg(KQML.parse('(request :content (are-you-there :who cwmsagent))'));
-    });
-    this.sendMsg(KQML.parse('(request :content (are-you-there :who cwmsagent))'));
     oninit.call(this);
   });
 }
-util.inherits(Spaceman, TripsModule);
+util.inherits(Spaceman, CWCModule);
 
 [ // begin Spaceman methods
 
-  function declareCapabilitiesOnce() {
-    if (this.alreadyDeclaredCapabilities) {
-      return;
-    }
-    this.alreadyDeclaredCapabilities = true;
+  function addHandlers() {
+    CWCModule.prototype.addHandlers.call(this);
+    this.addHandler(KQML.parse('(request &key :content (get-geographic-region . *))'),
+    		    this.handleGet);
+  },
+
+  function declareCapabilities() {
     this.sendMsg({ 0: 'tell', content: { 0: 'define-service',
       name: 'get-geographic-region',
       component: this.name,
@@ -312,16 +212,16 @@ util.inherits(Spaceman, TripsModule);
     try {
       var content = KQML.keywordify(msg.content);
       if (!('format' in content)) {
-	throw missingArgument('get-geographic-region', ':format');
+	throw errors.missingArgument('get-geographic-region', ':format');
       }
       var format = content.format;
       if (!('description' in content)) {
-	throw missingArgument('get-geographic-region', ':description');
+	throw errors.missingArgument('get-geographic-region', ':description');
       }
       var description = content.description;
       this.evaluateDescription(format, description, callback);
     } catch (err) {
-      callback(nestedError('while handling get-geographic-region request: ', err));
+      callback(errors.nestedError('while handling get-geographic-region request: ', err));
     }
   },
 
@@ -351,7 +251,7 @@ util.inherits(Spaceman, TripsModule);
 	    this.evaluateIso(format, formatStyle, formatName, searchStr, callback);
 	  } catch (isoError) {
 	    if (formatStyle == 'code') { // OSM doesn't output codes
-	      callback(nestedError('', isoError));
+	      callback(errors.nestedError('', isoError));
 	    } else {
 	      this.evaluateOsm(format, formatStyle, formatName, searchStr, undefined, callback);
 	    }
@@ -361,25 +261,25 @@ util.inherits(Spaceman, TripsModule);
 	var verb = description[0].toLowerCase();
 	if (verb == 'impact') {
 	  if (description.length != 2) {
-	    throw invalidArgumentCount(description, 1);
+	    throw errors.invalidArgumentCount(description, 1);
 	  }
 	  if (!KQML.isKQMLString(description[1])) {
-	    throw invalidArgument(description, 1, "string");
+	    throw errors.invalidArgument(description, 1, "string");
 	  }
 	  var searchStr = KQML.kqmlStringAsJS(description[1]).toLowerCase();
 	  this.evaluateImpact(format, formatStyle, formatName, searchStr, callback);
 	} else if (verb == 'iso') {
 	  if (description.length != 2) {
-            throw invalidArgumentCount(description, 1);
+            throw errors.invalidArgumentCount(description, 1);
 	  }
 	  if (!KQML.isKQMLString(description[1])) {
-	    throw invalidArgument(description, 1, "string");
+	    throw errors.invalidArgument(description, 1, "string");
 	  }
 	  var searchStr = KQML.kqmlStringAsJS(description[1]).toLowerCase();
 	  this.evaluateIso(format, formatStyle, formatName, searchStr, callback);
  	} else if (verb == 'neighbors') {
  	  if (description.length != 2) {
- 	    throw invalidArgumentCount(description, 1);
+ 	    throw errors.invalidArgumentCount(description, 1);
  	  }
  	  this.evaluateDescription(['code','iso'], description[1], (center) => {
  	    try {
@@ -401,7 +301,7 @@ util.inherits(Spaceman, TripsModule);
  		    // number
  		    if (neighbors.length == 0) {
  		      // we found the center country, but it has no neighbors
- 		      callback(unknownObject(description));
+ 		      callback(errors.unknownObject(description));
  		    } else if (neighbors.length == 1) {
  		      callback(neighbors[0]);
  		    } else {
@@ -413,30 +313,30 @@ util.inherits(Spaceman, TripsModule);
  	      } else if (center[0] == 'failure') {
  		callback(center);
  	      } else {
- 		callback(programError("expected a code or a failure from evaluating neighbors' argument with :format (code iso), but got a " + center[0]));
+ 		callback(errors.programError("expected a code or a failure from evaluating neighbors' argument with :format (code iso), but got a " + center[0]));
  	      }
  	    } catch (err) {
- 	      callback(nestedError("while processing neighbors results: ", err));
+ 	      callback(errors.nestedError("while processing neighbors results: ", err));
  	    }
  	  });
 	} else if (formatStyle == 'code') {
-	  throw invalidArgumentCombo("only raw search strings, WD, iso, or impact may be used as descriptions with code output format");
+	  throw errors.invalidArgumentCombo("only raw search strings, WD, iso, or impact may be used as descriptions with code output format");
 	} else if (verb == 'osm') {
 	  if (description.length < 2 || description.length > 3) {
-	    throw invalidArgumentCount(description, '1 or 2');
+	    throw errors.invalidArgumentCount(description, '1 or 2');
 	  }
 	  if (!KQML.isKQMLString(description[1])) {
-	    throw invalidArgument(description, 1, "string");
+	    throw errors.invalidArgument(description, 1, "string");
 	  }
 	  var searchStr = KQML.kqmlStringAsJS(description[1]).toLowerCase();
 	  var countryCode = undefined;
 	  if (description.length >= 3) {
 	    if (!KQML.isKQMLString(description[2])) {
-	      throw invalidArgument(description, 2, "string");
+	      throw errors.invalidArgument(description, 2, "string");
 	    }
 	    countryCode = KQML.kqmlStringAsJS(description[2]).toLowerCase();
 	    if (!(countryCode in this.isoCodeToCountry)) {
-	      throw unknownObject(['iso', description[2]]);
+	      throw errors.unknownObject(['iso', description[2]]);
 	    }
 	    // standardize on 2-letter code
 	    countryCode = this.isoCodeToCountry[countryCode].twoLetter;
@@ -444,12 +344,12 @@ util.inherits(Spaceman, TripsModule);
 	  this.evaluateOsm(format, formatStyle, formatName, searchStr, countryCode, callback);
 	} else if (verb == 'box') {
 	  if (description.length != 5) {
-	    throw invalidArgumentCount(description, 4);
+	    throw errors.invalidArgumentCount(description, 4);
 	  }
 	  var args = description.slice(1);
 	  var nonNumIndex = args.findIndex(n => (typeof(n) != 'number'));
 	  if (nonNumIndex != -1) {
-	    throw invalidArgument(description, nonNumIndex, 'number');
+	    throw errors.invalidArgument(description, nonNumIndex, 'number');
 	  }
 	  var outputBase = `${cacheDirParent}computed/[box--${args.join('--')}]`;
 	  // write GeoJSON-format output
@@ -474,12 +374,12 @@ util.inherits(Spaceman, TripsModule);
 	  }
 	} else if (verb == 'zone') {
 	  if (description.length != 3) {
-	    throw invalidArgumentCount(description, 2);
+	    throw errors.invalidArgumentCount(description, 2);
 	  }
 	  this.evaluateDescription(format, ['box', -180, description[1], 180, description[2]], callback);
 	} else if (verb == 'lune') {
 	  if (description.length != 3) {
-	    throw invalidArgumentCount(description, 2);
+	    throw errors.invalidArgumentCount(description, 2);
 	  }
 	  this.evaluateDescription(format, ['box', description[1], -90, description[2], 90], callback);
 	} else if (verb == 'intersection') {
@@ -506,13 +406,13 @@ util.inherits(Spaceman, TripsModule);
 	} else if (verb == 'difference') {
 	  this.evaluateDescription(format, ['intersection', description[1], ['complement'].concat(description.slice(2))], callback);
 	} else {
-	  throw unknownAction(verb);
+	  throw errors.unknownAction(verb);
 	}
       } else {
-	throw unknownAction(description[0]);
+	throw errors.unknownAction(description[0]);
       }
     } catch (err) {
-      callback(nestedError('', err));
+      callback(errors.nestedError('', err));
     }
   },
 
@@ -525,7 +425,7 @@ util.inherits(Spaceman, TripsModule);
     if (formatName == 'impact') {
       // check that this code represents *only* this country
       if (country.threeLetter != country.impactCode) {
-	throw invalidArgumentCombo("no IMPACT code correctly represents this country alone");
+	throw errors.invalidArgumentCombo("no IMPACT code correctly represents this country alone");
       }
       return codeKQML(country.impactCode, 'IMPACT');
     } else if (/ numeric$/.test(formatName)) {
@@ -539,7 +439,7 @@ util.inherits(Spaceman, TripsModule);
 
   function evaluateImpact(format, formatStyle, formatName, searchStr, callback) {
     if (!(searchStr in this.impactNames)) {
-      throw unknownObject(['impact', `"${KQML.escapeForQuotes(searchStr)}"`]);
+      throw errors.unknownObject(['impact', `"${KQML.escapeForQuotes(searchStr)}"`]);
     }
     var metadata = this.impactNames[searchStr];
     if (formatStyle == 'code') {
@@ -548,7 +448,7 @@ util.inherits(Spaceman, TripsModule);
       } else if (this.isValidIsoCodeFormatName(formatName)) {
 	var countries = this.impactCodeToCountries[metadata.code.toLowerCase()];
 	if (!countries) {
-	  throw invalidArgumentCombo("IMPACT code does not represent a country or set of countries: " + metadata.code);
+	  throw errors.invalidArgumentCombo("IMPACT code does not represent a country or set of countries: " + metadata.code);
 	}
 	var codes = countries.map((country) =>
 			this.countryToCodeKQML(country, formatName));
@@ -558,7 +458,7 @@ util.inherits(Spaceman, TripsModule);
 	  callback(['list', ...codes]);
 	}
       } else {
-	throw invalidArgument(format, 1, "one of 'IMPACT', 'ISO 3166-1 alpha-2', 'ISO 3166-1 alpha-3', 'ISO 3166-1 numeric'");
+	throw errors.invalidArgument(format, 1, "one of 'IMPACT', 'ISO 3166-1 alpha-2', 'ISO 3166-1 alpha-3', 'ISO 3166-1 numeric'");
       }
     } else {
       var inputFile = `${installDir}/fpu/map.shp`;
@@ -572,7 +472,7 @@ util.inherits(Spaceman, TripsModule);
 	this.convertVectorFormats(format, inputFile, outputBase, extraArgs, callback);
 	// TODO? use cty instead of fpu if it's a region; if it's a basin still need to merge somehow... maybe ogr2ogr will do it for us?
       } else {
-	throw unknownAction(formatStyle);
+	throw errors.unknownAction(formatStyle);
       }
     }
   },
@@ -592,7 +492,7 @@ util.inherits(Spaceman, TripsModule);
 	}
 	callback(answer);
       } else {
-	throw invalidArgument(format, 1, "one of 'IMPACT', 'ISO 3166-1 alpha-2', 'ISO 3166-1 alpha-3', 'ISO 3166-1 numeric'");
+	throw errors.invalidArgument(format, 1, "one of 'IMPACT', 'ISO 3166-1 alpha-2', 'ISO 3166-1 alpha-3', 'ISO 3166-1 numeric'");
       }
     } else { // raster or vector
       var inputFile = `${installDir}/fpu/map.shp`;
@@ -603,7 +503,7 @@ util.inherits(Spaceman, TripsModule);
       } else if (formatStyle == 'vector') {
 	this.convertVectorFormats(format, inputFile, outputBase, extraArgs, callback);
       } else {
-	throw unknownAction(formatStyle);
+	throw errors.unknownAction(formatStyle);
       }
     }
   },
@@ -617,18 +517,18 @@ util.inherits(Spaceman, TripsModule);
       if (this.nameToCountries[searchStr].length == 1) {
 	country = this.nameToCountries[searchStr][0];
       } else {
-	throw ambiguous(['iso', `"${KQML.escapeForQuotes(searchStr)}"`],
+	throw errors.ambiguous(['iso', `"${KQML.escapeForQuotes(searchStr)}"`],
 	                this.nameToCountries[searchStr].map(
 			  (country) =>
 			    ['iso', `"${country.twoLetter.toUpperCase()}"`]));
       }
     } else {
-      throw unknownObject(['iso', `"${KQML.escapeForQuotes(searchStr)}"`]);
+      throw errors.unknownObject(['iso', `"${KQML.escapeForQuotes(searchStr)}"`]);
     }
     // now country is set
     if (formatStyle == 'code') {
       if (!this.isValidIsoCodeFormatName(formatName)) {
-	throw invalidArgument(format, 1, "one of 'ISO 3166-1 alpha-2', 'ISO 3166-1 alpha-3', 'ISO 3166-1 numeric'");
+	throw errors.invalidArgument(format, 1, "one of 'ISO 3166-1 alpha-2', 'ISO 3166-1 alpha-3', 'ISO 3166-1 numeric'");
       }
       callback(this.countryToCodeKQML(country, formatName));
     } else {
@@ -664,10 +564,10 @@ util.inherits(Spaceman, TripsModule);
 	    } else if (formatStyle == 'vector') {
 	      this.convertVectorFormats(format, filename, base, [], callback);
 	    } else {
-	      throw unknownAction(formatStyle);
+	      throw errors.unknownAction(formatStyle);
 	    }
 	  } catch (err) {
-	    callback(nestedError('during format conversion: ', err));
+	    callback(errors.nestedError('during format conversion: ', err));
 	  }
 	} else {
 	  callback(result);
@@ -738,7 +638,7 @@ util.inherits(Spaceman, TripsModule);
 	  filter(r=>(r[0]=='failure')); /*.
 	  map(r=>r.comment).
 	  join('; ');
-	failure(programError(`while evaluating arguments of ${operator}: ${errors}`));*/
+	failure(errors.programError(`while evaluating arguments of ${operator}: ${errors}`));*/
 	if (errors.length == 1) {
 	  failure(errors[0]);
 	} else {
@@ -961,18 +861,18 @@ util.inherits(Spaceman, TripsModule);
 		  fs.writeFileSync(filename, polygons); // TODO de-Sync-ify
 		  callback(fileKQML(filename, format));
 		} else {
-		  throw unknownObject(['osm', `"${KQML.escapeForQuotes(searchStr)}"`]);
+		  throw errors.unknownObject(['osm', `"${KQML.escapeForQuotes(searchStr)}"`]);
 		}
 	      } catch (err) {
-		callback(nestedError('while processing OSM response: ', err));
+		callback(errors.nestedError('while processing OSM response: ', err));
 	      }
 	    });
 	  } else {
 	    res.abort();
-	    throw programError('nominatim returned status code ' + res.statusCode);
+	    throw errors.programError('nominatim returned status code ' + res.statusCode);
 	  }
 	} catch (err) {
-	  callback(nestedError('', err));
+	  callback(errors.nestedError('', err));
 	}
       });
       req.end();

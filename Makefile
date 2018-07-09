@@ -13,6 +13,7 @@ INSTALL_DIR=$(etcdir)/$(MODULE)
 install::
 	cd trips/src/KQML && make install
 	cd trips/src/TripsModule && make install
+	cd trips/src/util/cwc && make install
 
 install:: $(INSTALL_DIR)/cty/map.shp $(INSTALL_DIR)/fpu/map.shp downloads/countries.json
 	$(MKINSTALLDIRS) $(INSTALL_DIR)/cache/impact
