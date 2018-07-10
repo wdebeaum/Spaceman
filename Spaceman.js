@@ -375,8 +375,9 @@ util.inherits(Spaceman, CWCModule);
 	      throw errors.invalidArgument(description, 2, "string");
 	    }
 	    countryCode = KQML.kqmlStringAsJS(description[2]).toLowerCase();
+	    // TODO more general country lookup?
 	    if (!(countryCode in this.isoCodeToCountry)) {
-	      throw errors.unknownObject(['iso', description[2]]);
+	      throw errors.unknownObject(['country', description[2]]);
 	    }
 	    // standardize on 2-letter code
 	    countryCode = this.isoCodeToCountry[countryCode].twoLetter;
@@ -387,9 +388,27 @@ util.inherits(Spaceman, CWCModule);
 	    throw errors.invalidArgumentCount(description, 4);
 	  }
 	  var args = description.slice(1);
+	  // invalidArgument for non-numeric coords
 	  var nonNumIndex = args.findIndex(n => (typeof(n) != 'number'));
 	  if (nonNumIndex != -1) {
-	    throw errors.invalidArgument(description, nonNumIndex, 'number');
+	    throw errors.invalidArgument(description, nonNumIndex + 1, 'number');
+	  }
+	  // invalidArgument for coords out of range
+	  if (args[0] < -180 || args[0] > 180) {
+	    throw errors.invalidArgument(description, 1, 'number in [-180,180]');
+	  }
+	  if (args[1] < -90 || args[1] > 90) {
+	    throw errors.invalidArgument(description, 2, 'number in [-90,90]');
+	  }
+	  if (args[2] < -180 || args[2] > 180) {
+	    throw errors.invalidArgument(description, 3, 'number in [-180,180]');
+	  }
+	  if (args[3] < -90 || args[3] > 90) {
+	    throw errors.invalidArgument(description, 4, 'number in [-90,90]');
+	  }
+	  // invalidArgumentCombo for min > max coords
+	  if (args[0] > args[2] || args[1] > args[3]) {
+	    throw errors.invalidArgumentCombo('min > max');
 	  }
 	  var outputBase = `${cacheDirParent}computed/[box--${args.join('--')}]`;
 	  // write GeoJSON-format output
@@ -904,12 +923,13 @@ util.inherits(Spaceman, CWCModule);
 	    resultCodeList = Object.keys(codeMap);
 	    break;
 	  default:
-	    throw unknownAction(operator);
+	    callback(unknownAction(operator));
+	    return;
 	}
 	var resultKQMLList =
 	  resultCodeList.sort().map(code => codeKQML(code, standard));
 	if (resultKQMLList.length == 0) {
-	  throw errors.unknownObject([operator, ...argDescs]);
+	  callback(errors.unknownObject([operator, ...argDescs]));
 	} else if (resultKQMLList.length == 1) {
 	  callback(resultKQMLList[0]);
 	} else {

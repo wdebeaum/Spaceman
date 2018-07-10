@@ -1,8 +1,13 @@
 'use strict';
 
 const assert = require('assert');
+const fs = require('fs');
+const crypto = require('crypto'); // for MD5 hash for comparing graphics
 const errors = require('util/cwc/errors.js');
+const KQML = require('KQML/kqml.js');
 const Spaceman = require('Spaceman.js');
+
+const cacheDirParent = process.env.TRIPS_BASE + '/etc/Spaceman/cache/';
 
 // disable sending messages, to avoid cluttering stdout
 Spaceman.prototype.sendMsg = function() {}
@@ -13,6 +18,8 @@ describe('evaluateDescription', function() {
   var codeA2 = ['code', 'ISO 3166-1 alpha-2'];
   var codeA3 = ['code', 'ISO 3166-1 alpha-3'];
   var codeN3 = ['code', 'ISO 3166-1 numeric'];
+  // graphics format that allows no variation (raw grayscale)
+  var gray = ['raster', '"gray"', 720, 360];
 
   var sm;
   before(function(done) {
@@ -54,7 +61,36 @@ describe('evaluateDescription', function() {
     }
   }
 
-  // TODO assertions for testing graphical results, needed for fpu, OSM stuff, and shapes
+  // compute the MD5 sum of the contents of the named file
+  function md5(filename) {
+    var contents = fs.readFileSync(filename)
+    return crypto.createHash('md5').update(contents).digest('hex');
+  }
+
+  // assert that evaluateDescription gives a file result with the file's :name
+  // being "$TRIPS_BASE/etc/Spaceman/cache/$expectedName-720x360.gray", such
+  // that the MD5 sum of the file's content is expectedMD5
+  function assertGraphics(done, description, expectedName, expectedMD5) {
+    var expectedPath = cacheDirParent + expectedName + '-720x360.gray';
+    var expectedResult = {
+      0: 'file',
+      name: `"${KQML.escapeForQuotes(expectedPath)}"`,
+      format: gray
+    };
+    function almostDone(err) {
+      if (!err) {
+	try {
+	  assert.equal(md5(expectedPath), expectedMD5);
+	  done();
+	} catch (err) {
+	  done(err);
+	}
+      } else {
+	done(err);
+      }
+    }
+    assertResult(almostDone, gray, description, expectedResult);
+  }
 
   it('should fail on gibberish verbs', function(done) {
     assertResult(done, codeA2,
@@ -97,7 +133,13 @@ describe('evaluateDescription', function() {
   });
 
   describe('fpu', function() {
-    // TODO non-trivial test of successful case (requires graphics, since FPUs don't have names, only codes)
+    it('should handle the Rhine in Germany', function(done) {
+      assertGraphics(done,
+        ['fpu', '"RHI_DEU"'],
+	'impact/FPU-RHI_DEU',
+	'e08d36d462b252c1daacf5c295481b92'
+      );
+    });
     it('should fail on gibberish codes', function(done) {
       assertResult(done, codeI,
         ['fpu', '"sldkjfhsjdf"'],
@@ -241,16 +283,169 @@ describe('evaluateDescription', function() {
 
   //// OSM-derived stuff ////
   
-  // TODO osm, state, county
+  describe('osm', function() {
+    it('should handle United States', function(done) {
+      assertGraphics(done,
+        ['osm', '"United States"'],
+	'osm/united_states',
+	'8a5763bee95eb7710c4b4ead5b1fc77d'
+      );
+    });
+    it('should handle Georgia in the US', function(done) {
+      assertGraphics(done,
+        ['osm', '"Georgia"', '"US"'],
+	'osm/georgia--us',
+	'befddbd94aca534cca8d3cdfec666aec'
+      );
+    });
+    it('should handle Georgia in Georgia', function(done) {
+      assertGraphics(done,
+        ['osm', '"Georgia"', '"GE"'],
+	'osm/georgia--ge',
+	'4a4e203d5ab4392e1d12f01963afeb84'
+      );
+    });
+    it('should fail on gibberish names', function(done) {
+      assertResult(done, gray,
+        ['osm', '"sdkjfhskdfhskdfjhsd"'],
+	errors.unknownObject(['osm', '"sdkjfhskdfhskdfjhsd"'])
+      );
+    });
+    it('should fail on gibberish country codes', function(done) {
+      assertResult(done, gray,
+        ['osm', '"New York"', '"sdkjfhskdfhskdfjhsd"'],
+	errors.unknownObject(['country', '"sdkjfhskdfhskdfjhsd"'])
+      );
+    });
+  });
+
+  describe('state', function() {
+    it('should handle Georgia', function(done) {
+      assertGraphics(done,
+        ['state', '"Georgia"'],
+	'osm/georgia--state',
+	'befddbd94aca534cca8d3cdfec666aec'
+      );
+    });
+    it('should handle New South Wales', function(done) {
+      assertGraphics(done,
+        ['state', '"New South Wales"'],
+	'osm/new_south_wales--state',
+	'17853d675e8e557ebf6ee2ea3f15ce4e'
+      );
+    });
+  });
+
+  describe('county', function() {
+    it('should handle Ulster county in the US', function(done) {
+      assertGraphics(done,
+        ['county', '"Ulster"', '"US"'],
+	'osm/ulster--county--us',
+	'1895001ce399a04be3d092b6c6541dca'
+      );
+    });
+    it('should handle county Cork in Ireland', function(done) {
+      this.timeout(5000); // for some reason this takes a while to rasterize
+      assertGraphics(done,
+        ['county', '"Cork"', '"IE"'],
+	'osm/cork--county--ie',
+	'3d9e0d56d573d0e051a0138a32941b47'
+      );
+    });
+    it('should handle Acadia parish', function(done) {
+      assertGraphics(done,
+        ['county', '"Acadia"'],
+	'osm/acadia--county',
+	'06fdcbaa196602bdd1fb0822379208d0'
+      );
+    });
+  });
 
   //// shapes ////
 
-  // TODO box, zone, lune
+  describe('box', function() {
+    it('should handle an arbitrary box', function(done) {
+      assertGraphics(done,
+        ['box', -12, -34, 56, 78],
+	'computed/[box---12---34--56--78]',
+	'090e8169f8eabd82b715328ecfa00df0'
+      );
+    });
+    it('should fail on non-numeric coordinates', function(done) {
+      var desc = ['box', -12, 'barney', 56, 78];
+      assertResult(done, gray,
+        desc,
+	errors.invalidArgument(desc, 2, 'number')
+      );
+    });
+    it('should fail on coordinates out of bounds', function(done) {
+      var desc = ['box', -12, -34, 560, 78];
+      assertResult(done, gray,
+        desc,
+	errors.invalidArgument(desc, 3, 'number in [-180,180]')
+      );
+    });
+    it('should fail on inverted coordinates', function(done) {
+      assertResult(done, gray,
+	['box', -12, 78, 56, -34],
+	errors.invalidArgumentCombo('min > max')
+      );
+    });
+  });
+
+  describe('zone', function() {
+    it('should handle the arctic', function(done) {
+      assertGraphics(done,
+        ['zone', 66, 90],
+	'computed/[box---180--66--180--90]',
+	'0b703754c2fba8ea26e0cbfca37413ac'
+      );
+    });
+  });
+
+  describe('lune', function() {
+    it('should handle the western hemisphere', function(done) {
+      assertGraphics(done,
+        ['lune', -180, 0],
+	'computed/[box---180---90--0--90]',
+	'017749cc47b8c54255407ce5bfffbe45'
+      );
+    });
+  });
 
   //// set operations ////
 
   // see also set-ops.js
   
-  // TODO code set operations
+  describe('intersection', function() {
+    it('should handle Central American neighbors of Mexico', function(done) {
+      assertResult(done, codeA3,
+        ['intersection',
+	  ['neighbors', ['country', '"Mexico"']],
+	  ['subcontinent', '"Central America"']],
+	['list', 'BLZ', 'GTM']
+      );
+    });
+    it('should handle the only neighbor of both Canada and Mexico', function(done) {
+      assertResult(done, codeA2,
+        ['intersection',
+	  ['neighbors', ['country', '"Canada"']],
+	  ['neighbors', ['country', '"Mexico"']]],
+	'US'
+      );
+    });
+    it('should fail to find a neighbor of Canada in South America', function(done) {
+      var desc =
+        ['intersection',
+	  ['neighbors', ['country', '"Canada"']],
+	  ['subcontinent', '"South America"']];
+      assertResult(done, codeA2,
+        desc,
+	errors.unknownObject(desc)
+      );
+    });
+  });
+
+  // TODO union, complement, difference
 
 });

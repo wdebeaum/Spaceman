@@ -45,7 +45,9 @@ $(INSTALL_DIR)/fpu/map.shp: downloads/fpu.zip
 	unzip $< -x / -d $(dir $@)
 
 clean-cache clear-cache:
-	rm -rf $(INSTALL_DIR)/cache/impact/* $(INSTALL_DIR)/cache/osm/*
+	rm -rf	$(INSTALL_DIR)/cache/impact/* \
+		$(INSTALL_DIR)/cache/osm/* \
+		$(INSTALL_DIR)/cache/computed/*
 
 test::
 	cd tests ; $(MAKE)
