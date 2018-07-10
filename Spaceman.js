@@ -358,7 +358,8 @@ util.inherits(Spaceman, CWCModule);
 	  }
 	} else if (verb == 'difference') {
 	  this.evaluateDescription(format, ['intersection', description[1], ['complement'].concat(description.slice(2))], callback);
-	} else if (formatStyle == 'code') {
+	} else if (formatStyle == 'code' &&
+	           'osm state county box zone lune'.split(/ /).includes(verb)) {
 	  throw errors.invalidArgumentCombo("shape atoms and OSM-based lookup atoms may not be used as descriptions with code output format");
 	} else if (verb == 'osm' || verb == 'state' || verb == 'county') {
 	  if (description.length < 2 || description.length > 3) {
@@ -694,14 +695,18 @@ util.inherits(Spaceman, CWCModule);
 	}
       }
     }
-    argDescs.forEach(arg => {
-      this.evaluateDescription(format, arg, response => {
-	responses.push(response);
-	if (responses.length == argDescs.length) {
-	  done();
-	}
+    if (argDescs.length == 0) { // nothing to do
+      done();
+    } else {
+      argDescs.forEach(arg => {
+	this.evaluateDescription(format, arg, response => {
+	  responses.push(response);
+	  if (responses.length == argDescs.length) {
+	    done();
+	  }
+	});
       });
-    });
+    }
   },
 
   // TEST:
@@ -1264,4 +1269,8 @@ util.inherits(Spaceman, CWCModule);
 
 ].map(fn=>{ Spaceman.prototype[fn.name] = fn; });
 
-new Spaceman(process.argv, function() { this.run() });
+module.exports = Spaceman;
+
+if (require.main === module) {
+  new Spaceman(process.argv, function() { this.run() });
+}
