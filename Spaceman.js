@@ -765,6 +765,9 @@ util.inherits(Spaceman, CWCModule);
 	  // doesn't like that for some reason (yields a blank image), so
 	  // convert to 8-bit here
 	  '-depth', '8',
+	  // in case we're composing images in a format that doesn't have
+	  // dimension information, like GRAY
+	  '-size', width + 'x' + height,
 	  ...extraMagickArgs,
 	  ...inputArgs,
 	  outputFile

@@ -156,6 +156,16 @@ describe('evaluateDescription', function() {
     });
   });
 
+  describe('wd', function() {
+    it('should find the whole world of countries', function(done) {
+      assertGraphics(done,
+	'WD',
+	'WD',
+	'8ebefeaea149f7a3131cf323be89e827'
+      );
+    });
+  });
+
   //// ISO-derived stuff ////
 
   describe('iso', function() {
@@ -285,6 +295,7 @@ describe('evaluateDescription', function() {
   
   describe('osm', function() {
     it('should handle United States', function(done) {
+      this.timeout(5000); // for some reason this takes a while to fetch
       assertGraphics(done,
         ['osm', '"United States"'],
 	'osm/united_states',
@@ -444,8 +455,60 @@ describe('evaluateDescription', function() {
 	errors.unknownObject(desc)
       );
     });
+    it('should handle Arctic Russia', function(done) {
+      assertGraphics(done,
+        ['intersection', '"Russia"', ['zone', 66, 90]],
+	'computed/[intersection--[box---180--66--180--90]--impact-Region-RUS]',
+	'fdf2cc8209fd3a46b54e6a6c5bb1ed62'
+      );
+    });
   });
 
-  // TODO union, complement, difference
+  describe('union', function () {
+    it('should deduplicate the US', function(done) {
+      assertResult(done, codeA2,
+        ['union',
+	  ['country', '"United States of America"'],
+	  ['country', '"USA"']],
+	'US'
+      );
+    });
+    it('should report errors in multiple arguments', function(done) {
+      assertResult(done, codeA2,
+        ['union', ['country', '"qwertyuiop"'], ['country', '"asdfghjkl"']],
+	{ 0: 'failure', type: 'cannot-perform', reason:
+	  { 0: 'multiple', failures: [
+	    errors.unknownObject(['country', '"qwertyuiop"']),
+	    errors.unknownObject(['country', '"asdfghjkl"'])
+	    ] } }
+      );
+    });
+  });
+
+  describe('complement', function() {
+    it('should find Antarctica', function(done) {
+      assertResult(done, codeA3,
+        ['complement',
+	  ['continent', '"Americas"'],
+	  ['continent', '"Europe"'],
+	  ['continent', '"Asia"'],
+	  ['continent', '"Africa"'],
+	  ['continent', '"Oceania"']
+	  ],
+	'list ATA ATF BVT HMD'.split(/ /)
+      );
+    });
+  });
+
+  describe('difference', function() {
+    it('should subtract the US from Northern America', function(done) {
+      assertResult(done, codeA2,
+        ['difference',
+	  ['subcontinent', '"Northern America"'],
+	  ['country', '"USA"']],
+	'list BM CA GL MX PM UM'.split(/ /)
+      );
+    });
+  });
 
 });

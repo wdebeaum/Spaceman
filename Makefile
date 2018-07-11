@@ -47,7 +47,8 @@ $(INSTALL_DIR)/fpu/map.shp: downloads/fpu.zip
 clean-cache clear-cache:
 	rm -rf	$(INSTALL_DIR)/cache/impact/* \
 		$(INSTALL_DIR)/cache/osm/* \
-		$(INSTALL_DIR)/cache/computed/*
+		$(INSTALL_DIR)/cache/computed/* \
+		$(INSTALL_DIR)/cache/WD-*
 
 test::
 	cd tests ; $(MAKE)
