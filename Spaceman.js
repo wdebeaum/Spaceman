@@ -586,7 +586,7 @@ util.inherits(Spaceman, CWCModule);
 	// impact doesn't have this specific country, only a merged "region", so look up the actual country in OSM
 	this.evaluateOsm(format, formatStyle, formatName, 'country', country.names[0], country.twoLetter, callback);
       } else { // impact does have this country (in theory)
-	this.evaluateImpact(format, formatStyle, formatName, country.impactCode, callback);
+	this.evaluateImpact(format, formatStyle, formatName, undefined, country.impactCode, callback);
       }
     }
   },
